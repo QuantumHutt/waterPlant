@@ -8,6 +8,7 @@ use App\Http\Controllers\Web\DeliveryController;
 use App\Http\Controllers\Web\EmployeeController;
 use App\Http\Controllers\Web\ExpenseController;
 use App\Http\Controllers\Web\GallonController;
+use App\Http\Controllers\Web\InternalConsumptionController;
 use App\Http\Controllers\Web\InventoryController;
 use App\Http\Controllers\Web\ProductCategoryController;
 use App\Http\Controllers\Web\PurchaseController;
@@ -45,6 +46,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('inventory/stock-out', [InventoryController::class, 'stockOut'])->name('inventory.stock-out');
     Route::post('inventory/transfer', [InventoryController::class, 'transfer'])->name('inventory.transfer');
     Route::post('inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
+
+    // Internal Consumption (owner / internal use — not a sale)
+    Route::get('consumption', [InternalConsumptionController::class, 'index'])->name('consumption.index');
+    Route::post('consumption', [InternalConsumptionController::class, 'store'])->name('consumption.store');
+    Route::post('consumption/pos', [InternalConsumptionController::class, 'pos'])->name('consumption.pos');
 
     // Customers
     Route::resource('customers', CustomerController::class)->only(['index', 'store', 'update', 'destroy']);

@@ -29,10 +29,7 @@ class SaleController extends Controller
             'customers' => Customer::where('is_active', true)->get(['id', 'name', 'type']),
             'warehouses' => Warehouse::where('is_active', true)->get(['id', 'name']),
             // Sealed sellable products only (excludes bulk water + the company bottle, which have no sale price).
-            'products' => Product::where('is_active', true)
-                ->where('is_service', false)
-                ->where('sale_price', '>', 0)
-                ->get(['id', 'name', 'sku', 'barcode', 'sale_price', 'wholesale_price', 'pack_size']),
+            'products' => $this->sellableProducts(),
             // 19L refill service (deducts water only) + deposit config for the new-bottle action.
             'refillService' => Product::where('sku', \App\Models\Setting::get('sales', 'refill_service_sku') ?? '19L-REFILL')
                 ->first(['id', 'name', 'sku', 'sale_price']),
@@ -47,6 +44,45 @@ class SaleController extends Controller
         return back()
             ->with('success', "Sale completed — {$invoice->invoice_number}.")
             ->with('print_invoice_id', $invoice->id);
+    }
+
+    /**
+     * Sellable products for the POS with live on-hand stock.
+     * Single → its own bottle stock; Pack → available whole packs (base ÷ pack_size).
+     *
+     * @return \Illuminate\Support\Collection<int, array<string,mixed>>
+     */
+    private function sellableProducts(): \Illuminate\Support\Collection
+    {
+        $onHand = \Illuminate\Support\Facades\DB::table('stock_items')
+            ->groupBy('product_id')
+            ->selectRaw('product_id, SUM(quantity) as q')
+            ->pluck('q', 'product_id');
+
+        return Product::where('is_active', true)
+            ->where('is_service', false)
+            ->where('sale_price', '>', 0)
+            ->get(['id', 'name', 'sku', 'barcode', 'sale_price', 'wholesale_price', 'cost_price', 'pack_size', 'pack_of_product_id'])
+            ->map(function ($p) use ($onHand) {
+                $baseId = $p->pack_of_product_id ?? $p->id;
+                $baseQty = (float) ($onHand[$baseId] ?? 0);
+                $stock = $p->pack_of_product_id
+                    ? (int) floor($baseQty / max(1, (int) $p->pack_size)) // available whole packs
+                    : $baseQty;
+
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'sku' => $p->sku,
+                    'barcode' => $p->barcode,
+                    'sale_price' => (float) $p->sale_price,
+                    'wholesale_price' => $p->wholesale_price !== null ? (float) $p->wholesale_price : null,
+                    'cost_price' => (float) $p->cost_price,
+                    'pack_size' => (int) $p->pack_size,
+                    'is_pack' => $p->pack_of_product_id !== null,
+                    'stock' => $stock,
+                ];
+            });
     }
 
     /** Thermal receipt (58mm / 80mm) — standalone print page. */

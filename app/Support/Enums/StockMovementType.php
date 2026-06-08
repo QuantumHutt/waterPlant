@@ -18,6 +18,7 @@ enum StockMovementType: string
     case Sale = 'sale';
     case Purchase = 'purchase';
     case Return = 'return';
+    case Consumption = 'consumption';   // owner / internal use (not a sale)
 
     /** Movements that increase on-hand quantity. */
     public function isInbound(): bool

@@ -11,9 +11,31 @@ import { useCurrency } from '@/composables/useCurrency'
 import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode } from 'lucide-vue-next'
 
 const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, bottleDeposit: { type: Number, default: 1000 } })
-const { can } = usePermissions()
+const { can, isSuperAdmin } = usePermissions()
 const { format } = useCurrency()
 const page = usePage()
+
+// Owner-only: bill at cost price (counts as a normal sale at cost).
+const atCost = ref(false)
+function priceFor(p) { return Number(atCost.value ? p.cost_price : p.sale_price) }
+watch(atCost, () => {
+    // Re-price current cart lines to cost / sale.
+    form.items.forEach((i) => {
+        const p = props.products.find((x) => x.id === i.product_id)
+        if (p) i.unit_price = priceFor(p)
+    })
+})
+
+// Owner-only: record the cart as FREE internal use (no sale, no profit).
+function internalUseFree() {
+    if (!form.items.length) return
+    if (!confirm('Record this cart as FREE internal/owner use? Stock kategi, koi sale nahi banegi.')) return
+    router.post(route('consumption.pos'), {
+        warehouse_id: form.warehouse_id,
+        reason: 'Owner internal use (POS)',
+        items: form.items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })),
+    }, { preserveScroll: true, onSuccess: resetCart })
+}
 
 // Receipt printer width (58mm / 80mm) — remembered per device.
 const receiptSize = ref(Number(localStorage.getItem('receipt_size')) || 80)
@@ -124,16 +146,33 @@ const form = useForm({
 })
 form.warehouse_id = props.warehouses[0]?.id ?? ''
 
+// Lightweight in-page toast for stock warnings.
+const toast = ref(null)
+function notify(msg) {
+    toast.value = msg
+    setTimeout(() => { if (toast.value === msg) toast.value = null }, 2500)
+}
+function cartQtyFor(id) {
+    return form.items.filter((i) => i.product_id === id).reduce((s, i) => s + Number(i.quantity || 0), 0)
+}
+
 function addToCart(p, qty = 1, label = null) {
+    const stock = Number(p.stock ?? 0)
+    if (stock <= 0) { notify(`${p.name}: stock 0 hai — add nahi hoga`); return }
+    if (cartQtyFor(p.id) + qty > stock) { notify(`${p.name}: sirf ${stock} ${p.is_pack ? 'packs' : 'available'}`); return }
     const existing = form.items.find((i) => i.product_id === p.id && !label)
     if (existing && !label) { existing.quantity += qty; return }
-    form.items.push({ product_id: p.id, name: label ?? p.name, quantity: qty, unit_price: Number(p.sale_price), discount: 0, tax: 0 })
+    form.items.push({ product_id: p.id, name: label ?? p.name, quantity: qty, unit_price: priceFor(p), discount: 0, tax: 0 })
 }
 // Add a full carton/"pat": one line of pack_size bottles (stock deducts pack_size).
 function addPack(p) {
     addToCart(p, p.pack_size, `${p.name} — Pack (${p.pack_size})`)
 }
-function inc(it) { it.quantity++ }
+function inc(it) {
+    const p = props.products.find((x) => x.id === it.product_id)
+    if (p && it.quantity + 1 > Number(p.stock)) { notify(`${p.name}: sirf ${p.stock} available`); return }
+    it.quantity++
+}
 function dec(it) { it.quantity = Math.max(1, it.quantity - 1) }
 function removeItem(i) { form.items.splice(i, 1) }
 
@@ -198,6 +237,13 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
             </div>
         </template>
 
+        <!-- Stock warning toast -->
+        <transition name="fade">
+            <div v-if="toast" class="fixed left-1/2 top-6 z-[120] -translate-x-1/2 rounded-full bg-destructive px-5 py-2.5 text-sm font-medium text-white shadow-lg">
+                {{ toast }}
+            </div>
+        </transition>
+
         <div v-if="can('sales.create')" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <!-- Product picker -->
             <Card class="lg:col-span-2" title="Products">
@@ -220,13 +266,19 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                 </div>
                 <input v-model="search" @keyup.enter="addFirstMatch" placeholder="Search product… (Enter to add first match)" class="mb-3 w-full rounded-full border-border bg-background px-4 py-2 text-sm focus:border-brand focus:ring-brand" />
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    <div v-for="p in filtered" :key="p.id" class="rounded-2xl ring-1 ring-border p-3 hover:ring-brand transition">
+                    <div v-for="p in filtered" :key="p.id" class="rounded-2xl ring-1 p-3 transition"
+                        :class="p.stock <= 0 ? 'ring-destructive/30 bg-destructive/5 opacity-70' : 'ring-border hover:ring-brand'">
                         <button type="button" @click="addToCart(p)" class="block w-full text-left">
                             <p class="text-sm font-medium truncate">{{ p.name }}</p>
-                            <p class="text-xs text-muted-foreground">{{ format(p.sale_price) }}</p>
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs text-muted-foreground">{{ format(p.sale_price) }}</p>
+                                <span class="text-[11px] font-medium" :class="p.stock <= 0 ? 'text-destructive' : (p.stock <= 10 ? 'text-warning' : 'text-success')">
+                                    {{ p.stock <= 0 ? 'Out of stock' : `Stock: ${p.stock}${p.is_pack ? ' pk' : ''}` }}
+                                </span>
+                            </div>
                         </button>
-                        <button v-if="p.pack_size > 1" type="button" @click="addPack(p)"
-                            class="mt-2 w-full rounded-full bg-muted px-2 py-1 text-[11px] font-medium hover:bg-brand/10 hover:text-brand">
+                        <button v-if="!p.is_pack && p.pack_size > 1" type="button" @click="addPack(p)" :disabled="p.stock <= 0"
+                            class="mt-2 w-full rounded-full bg-muted px-2 py-1 text-[11px] font-medium hover:bg-brand/10 hover:text-brand disabled:opacity-50">
                             + Pack ×{{ p.pack_size }}
                         </button>
                     </div>
@@ -237,7 +289,13 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
             <Card title="Cart">
                 <div class="space-y-2 max-h-72 overflow-y-auto">
                     <div v-for="(it, i) in form.items" :key="i" class="flex items-center gap-2 text-sm">
-                        <div class="flex-1 min-w-0"><p class="truncate font-medium">{{ it.name }}</p><p class="text-xs text-muted-foreground">{{ format(it.unit_price) }}</p></div>
+                        <div class="flex-1 min-w-0">
+                            <p class="truncate font-medium">{{ it.name }}</p>
+                            <!-- Super Admin can set any price (owner gives whatever he wants); cashier sees fixed price -->
+                            <input v-if="isSuperAdmin" v-model.number="it.unit_price" type="number" step="0.01" min="0"
+                                class="mt-0.5 w-24 rounded border-border bg-background py-0.5 text-xs focus:border-brand focus:ring-brand" />
+                            <p v-else class="text-xs text-muted-foreground">{{ format(it.unit_price) }}</p>
+                        </div>
                         <button @click="dec(it)" class="rounded-full p-1 hover:bg-muted"><Minus class="size-3.5" /></button>
                         <span class="w-6 text-center">{{ it.quantity }}</span>
                         <button @click="inc(it)" class="rounded-full p-1 hover:bg-muted"><Plus class="size-3.5" /></button>
@@ -292,6 +350,17 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                             <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
                         </select>
                     </div>
+                    <!-- Owner-only controls (hidden from cashiers) -->
+                    <div v-if="isSuperAdmin" class="rounded-xl bg-brand/5 ring-1 ring-brand/20 p-2.5 space-y-2">
+                        <label class="flex items-center gap-2 text-xs font-medium">
+                            <input type="checkbox" v-model="atCost" class="rounded border-border text-brand focus:ring-brand" />
+                            Bill at Cost (owner) — counts as a sale at cost price
+                        </label>
+                        <button type="button" @click="internalUseFree" class="w-full rounded-lg bg-warning/15 px-3 py-1.5 text-xs font-semibold text-warning hover:bg-warning/25">
+                            Internal Use — FREE (no sale, stock only)
+                        </button>
+                    </div>
+
                     <div class="flex items-center justify-between text-sm"><span class="text-muted-foreground">Subtotal</span><span>{{ format(subtotal) }}</span></div>
                     <div class="flex items-center justify-between text-sm">
                         <span class="text-muted-foreground">Discount</span>

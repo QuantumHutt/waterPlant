@@ -6,7 +6,7 @@ import { computed } from 'vue'
 import {
     LayoutDashboard, Package, Boxes, FlaskConical, Container, ShoppingCart,
     Receipt, Users as UsersIcon, Truck, Calculator, Wallet, UserCog,
-    Droplets, BarChart3, ShieldCheck, Settings, Building2,
+    Droplets, BarChart3, ShieldCheck, Settings, Building2, Home,
 } from 'lucide-vue-next'
 
 defineProps({ onClose: { type: Function, default: () => {} } })
@@ -27,8 +27,10 @@ const nav = computed(() => [
     { label: 'Dashboard', icon: LayoutDashboard, route: 'dashboard', show: true },
     { label: 'Products', icon: Package, route: 'products.index', show: can('products.view') },
     { label: 'Inventory', icon: Boxes, route: 'inventory.index', show: can('inventory.view') },
+    { label: 'Internal Use', icon: Home, route: 'consumption.index', show: can('consumption.view') },
     { label: 'Production', icon: FlaskConical, route: 'production.index', show: can('production.view') },
     { label: 'Gallons', icon: Container, route: 'gallons.index', show: can('gallons.view') },
+    { label: 'Suppliers', icon: Building2, route: 'suppliers.index', show: can('suppliers.view') },
     { label: 'Purchases', icon: ShoppingCart, route: 'purchases.index', show: can('purchases.view') },
     { label: 'Sales / POS', icon: Receipt, route: 'sales.index', show: can('sales.view') },
     { label: 'Customers', icon: UsersIcon, route: 'customers.index', show: can('customers.view') },

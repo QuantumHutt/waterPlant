@@ -23,6 +23,7 @@ final class Permissions
         'settings' => ['view', 'update'],
         'products' => ['view', 'create', 'update', 'delete'],
         'inventory' => ['view', 'create', 'update', 'delete', 'adjust', 'transfer', 'audit'],
+        'consumption' => ['view', 'create'],   // owner/internal use (not a sale)
         'production' => ['view', 'create', 'update', 'delete'],
         'gallons' => ['view', 'manage'],
         'customers' => ['view', 'create', 'update', 'delete'],
@@ -86,7 +87,7 @@ final class Permissions
             RoleName::Manager->value => array_merge(
                 self::viewOnly(['users', 'roles', 'settings', 'audit']),
                 self::forGroups([
-                    'products', 'inventory', 'production', 'gallons',
+                    'products', 'inventory', 'consumption', 'production', 'gallons',
                     'customers', 'suppliers', 'purchases', 'sales', 'delivery',
                     'employees', 'quality',
                 ]),

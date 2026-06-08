@@ -42,7 +42,7 @@ class PagesSmokeTest extends TestCase
             ['dashboard'], ['products.index'], ['inventory.index'], ['production.index'],
             ['gallons.index'], ['purchases.index'], ['sales.index'], ['customers.index'],
             ['suppliers.index'], ['delivery.index'], ['accounting.index'], ['expenses.index'],
-            ['employees.index'], ['quality.index'], ['reports.index'], ['users.index'], ['settings.index'],
+            ['employees.index'], ['quality.index'], ['reports.index'], ['users.index'], ['settings.index'], ['consumption.index'],
         ];
     }
 
