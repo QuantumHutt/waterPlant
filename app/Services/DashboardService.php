@@ -48,6 +48,57 @@ class DashboardService extends BaseService
         ];
     }
 
+    /**
+     * Customers who currently owe money (udhaar). Highest balance first, with an
+     * "over credit limit" flag so the cashier knows who to chase.
+     *
+     * @return array<string,mixed>
+     */
+    public function receivables(): array
+    {
+        if (! Schema::hasTable('customers')) {
+            return ['rows' => [], 'count' => 0, 'total' => 0.0];
+        }
+
+        // Oldest unpaid invoice date per customer → overdue days.
+        $oldest = DB::table('invoices')
+            ->where('balance', '>', 0)
+            ->whereNotIn('status', ['cancelled', 'returned'])
+            ->whereNotNull('customer_id')
+            ->groupBy('customer_id')
+            ->selectRaw('customer_id, MIN(invoice_date) as oldest_date')
+            ->pluck('oldest_date', 'customer_id');
+
+        $today = now();
+
+        $rows = \App\Models\Customer::where('current_balance', '>', 0)
+            ->orderByDesc('current_balance')
+            ->limit(50)
+            ->get(['id', 'name', 'phone', 'current_balance', 'credit_limit'])
+            ->map(function ($c) use ($oldest, $today) {
+                $since = $oldest[$c->id] ?? null;
+                $days = $since ? (int) $today->copy()->startOfDay()->diffInDays(\Illuminate\Support\Carbon::parse($since)->startOfDay()) : 0;
+
+                return [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'phone' => $c->phone,
+                    'balance' => (float) $c->current_balance,
+                    'display' => Money::format($c->current_balance),
+                    'over_limit' => (float) $c->credit_limit > 0 && (float) $c->current_balance > (float) $c->credit_limit,
+                    'overdue_days' => $days,
+                    'overdue' => $days >= 7,   // 7+ days = overdue (chase)
+                ];
+            });
+
+        return [
+            'rows' => $rows,
+            'count' => $rows->count(),
+            'total' => round((float) $rows->sum('balance'), 2),
+            'total_display' => Money::format((float) $rows->sum('balance')),
+        ];
+    }
+
     private function lowStockCount(): int
     {
         if (! Schema::hasTable('stock_items')) {

@@ -17,6 +17,7 @@ class DashboardController extends Controller
     {
         return Inertia::render('Dashboard/Index', [
             'metrics' => $this->service->metrics(),
+            'receivables' => $this->service->receivables(),
         ]);
     }
 }

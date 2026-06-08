@@ -1,6 +1,6 @@
 <script setup>
 import { Head, useForm, router, usePage } from '@inertiajs/vue3'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import Card from '@/Components/ui/Card.vue'
 import InputLabel from '@/Components/InputLabel.vue'
@@ -8,7 +8,7 @@ import TextInput from '@/Components/TextInput.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useCurrency } from '@/composables/useCurrency'
-import { Plus, Minus, Trash2, RotateCcw, Container, Printer } from 'lucide-vue-next'
+import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode } from 'lucide-vue-next'
 
 const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, bottleDeposit: { type: Number, default: 1000 } })
 const { can } = usePermissions()
@@ -27,6 +27,36 @@ function openReceipt(id) {
 watch(
     () => page.props.flash?.print_invoice_id,
     (id) => { if (id) openReceipt(id) },
+)
+
+// ---- Customer search + inline add ----
+const customerSearch = ref('')
+const showCustomerList = ref(false)
+const selectedCustomer = computed(() => props.customers.find((c) => c.id === form.customer_id) || null)
+const filteredCustomers = computed(() => {
+    const q = customerSearch.value.toLowerCase().trim()
+    const list = q ? props.customers.filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q)) : props.customers
+    return list.slice(0, 8)
+})
+function pickCustomer(c) {
+    form.customer_id = c ? c.id : ''
+    customerSearch.value = ''
+    showCustomerList.value = false
+}
+
+const showAddCustomer = ref(false)
+const newCustomer = useForm({ name: '', phone: '', type: 'retail', opening_balance: 0 })
+function saveCustomer() {
+    newCustomer.post(route('customers.store'), {
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: () => { showAddCustomer.value = false; newCustomer.reset() },
+    })
+}
+// Auto-select a customer added from the POS.
+watch(
+    () => page.props.flash?.new_customer_id,
+    (id) => { if (id) { form.customer_id = id } },
 )
 
 // 19L REFILL: customer brings own bottle. Sell ONE refill service (deducts 19L water, no bottle).
@@ -57,6 +87,37 @@ const filtered = computed(() => {
     return props.products.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q)).slice(0, 24)
 })
 
+// ---- Barcode scanner: scan (ends with Enter) → instant add ----
+const scan = ref('')
+const scanBox = ref(null)
+function onScan() {
+    const code = scan.value.trim()
+    if (!code) return
+    const p = props.products.find((x) => (x.barcode && x.barcode === code) || (x.sku && x.sku.toLowerCase() === code.toLowerCase()))
+    if (p) {
+        addToCart(p)
+    } else {
+        // not a code — treat as search term
+        search.value = code
+    }
+    scan.value = ''
+}
+function focusScan() {
+    scanBox.value?.focus()
+}
+onMounted(focusScan)
+
+// Enter in the search box adds the first match.
+function addFirstMatch() {
+    if (filtered.value.length) addToCart(filtered.value[0])
+    search.value = ''
+}
+
+// Quick cash: exact amount or a tendered note.
+function quickCash(amount) {
+    received.value = amount
+}
+
 const form = useForm({
     customer_id: '', warehouse_id: '', type: 'pos', discount: 0, paid_total: 0,
     payment_method: 'cash', new_bottle: false, deposit: 0, items: [],
@@ -81,14 +142,36 @@ const grand = computed(() => Math.max(0, subtotal.value - (Number(form.discount)
 const deposit = computed(() => (form.new_bottle ? Number(form.deposit) || 0 : 0))
 const collectable = computed(() => grand.value + deposit.value)
 
+// Cash the customer actually handed over (blank = paying in full).
+const received = ref(null)
+const paidNow = computed(() => {
+    if (received.value === null || received.value === '') return collectable.value
+    return Math.min(Number(received.value) || 0, grand.value) // revenue paid (deposit handled separately)
+})
+const change = computed(() => {
+    if (received.value === null || received.value === '') return 0
+    return Math.max(0, (Number(received.value) || 0) - collectable.value)
+})
+const dueAmount = computed(() => Math.max(0, grand.value - paidNow.value)) // udhaar / baqaya
+
+function resetCart() {
+    form.reset()
+    received.value = null
+    form.warehouse_id = props.warehouses[0]?.id ?? ''
+    form.items = []
+    setTimeout(focusScan, 100) // ready for the next customer immediately
+}
+
 function complete() {
     if (!form.items.length) return
-    if (form.new_bottle && !form.customer_id) { alert('Select a customer to track the bottle deposit.'); return }
-    if (form.type !== 'credit') form.paid_total = grand.value
-    form.post(route('sales.store'), {
-        preserveScroll: true,
-        onSuccess: () => { form.reset(); form.warehouse_id = props.warehouses[0]?.id ?? ''; form.items = [] },
-    })
+    if (form.new_bottle && !form.customer_id) { alert('Bottle deposit ke liye customer select karein.'); return }
+    // Udhaar / partial payment requires a named customer so the balance can be tracked.
+    if (dueAmount.value > 0 && !form.customer_id) {
+        alert('Customer ne poora paisa nahi diya — baqaya (udhaar) ke liye customer select karna zaroori hai.')
+        return
+    }
+    form.paid_total = paidNow.value
+    form.post(route('sales.store'), { preserveScroll: true, onSuccess: resetCart })
 }
 
 function returnInvoice(inv) {
@@ -118,6 +201,13 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
         <div v-if="can('sales.create')" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <!-- Product picker -->
             <Card class="lg:col-span-2" title="Products">
+                <!-- Barcode scanner: cursor stays here; scan → auto-add -->
+                <div class="mb-3 flex items-center gap-2 rounded-2xl bg-brand/5 ring-1 ring-brand/20 px-3 py-2">
+                    <Barcode class="size-5 text-brand" />
+                    <input ref="scanBox" v-model="scan" @keyup.enter="onScan"
+                        placeholder="Scan barcode / SKU and press Enter…"
+                        class="w-full border-0 bg-transparent p-0 text-sm focus:ring-0" />
+                </div>
                 <div v-if="refillService" class="mb-3 grid grid-cols-2 gap-2">
                     <button type="button" @click="addRefill"
                         class="flex items-center justify-center gap-2 rounded-2xl bg-brand/10 text-brand px-3 py-2.5 text-sm font-semibold hover:bg-brand/20 transition">
@@ -128,7 +218,7 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                         <Container class="size-4" /> New 19L Bottle + Deposit
                     </button>
                 </div>
-                <input v-model="search" placeholder="Search product…" class="mb-3 w-full rounded-full border-border bg-background px-4 py-2 text-sm focus:border-brand focus:ring-brand" />
+                <input v-model="search" @keyup.enter="addFirstMatch" placeholder="Search product… (Enter to add first match)" class="mb-3 w-full rounded-full border-border bg-background px-4 py-2 text-sm focus:border-brand focus:ring-brand" />
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <div v-for="p in filtered" :key="p.id" class="rounded-2xl ring-1 ring-border p-3 hover:ring-brand transition">
                         <button type="button" @click="addToCart(p)" class="block w-full text-left">
@@ -157,10 +247,43 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                 </div>
 
                 <div class="mt-3 space-y-2 border-t border-border pt-3">
-                    <select v-model="form.customer_id" class="block w-full rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
-                        <option value="">Walk-in</option>
-                        <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
-                    </select>
+                    <!-- Customer search / select -->
+                    <div class="relative">
+                        <div class="flex items-center gap-2">
+                            <div class="relative flex-1">
+                                <input
+                                    :value="selectedCustomer ? selectedCustomer.name : customerSearch"
+                                    @input="(e) => { customerSearch = e.target.value; form.customer_id = ''; showCustomerList = true }"
+                                    @focus="showCustomerList = true"
+                                    placeholder="Walk-in — search customer…"
+                                    class="w-full rounded-md border-border bg-background pr-7 text-sm focus:border-brand focus:ring-brand"
+                                />
+                                <button v-if="form.customer_id" type="button" @click="pickCustomer(null)" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-destructive">×</button>
+                            </div>
+                            <button type="button" @click="showAddCustomer = !showAddCustomer" class="rounded-md bg-brand/10 px-2.5 py-1.5 text-sm font-medium text-brand hover:bg-brand/20" title="Add new customer">+</button>
+                        </div>
+
+                        <!-- Results dropdown -->
+                        <div v-if="showCustomerList && !form.customer_id" class="absolute z-20 mt-1 w-full overflow-hidden rounded-xl bg-card shadow-lg ring-1 ring-border">
+                            <button type="button" @click="pickCustomer(null)" class="block w-full px-3 py-2 text-left text-sm hover:bg-muted">Walk-in (no customer)</button>
+                            <button v-for="c in filteredCustomers" :key="c.id" type="button" @click="pickCustomer(c)" class="block w-full px-3 py-2 text-left text-sm hover:bg-muted">
+                                {{ c.name }} <span class="text-xs text-muted-foreground">{{ c.phone }}</span>
+                            </button>
+                            <p v-if="!filteredCustomers.length" class="px-3 py-2 text-xs text-muted-foreground">No match — use “+” to add.</p>
+                        </div>
+                    </div>
+
+                    <!-- Inline add customer -->
+                    <div v-if="showAddCustomer" class="rounded-xl bg-muted/50 p-3 space-y-2">
+                        <input v-model="newCustomer.name" placeholder="Customer name *" class="w-full rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" />
+                        <div class="flex gap-2">
+                            <input v-model="newCustomer.phone" placeholder="Phone" class="flex-1 rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" />
+                            <select v-model="newCustomer.type" class="rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
+                                <option value="retail">Retail</option><option value="wholesale">Wholesale</option><option value="corporate">Corporate</option>
+                            </select>
+                        </div>
+                        <button type="button" @click="saveCustomer" :disabled="newCustomer.processing || !newCustomer.name" class="w-full rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">Save Customer</button>
+                    </div>
                     <div class="grid grid-cols-2 gap-2">
                         <select v-model="form.type" class="rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
                             <option value="pos">POS</option><option value="wholesale">Wholesale</option><option value="credit">Credit</option>
@@ -180,8 +303,26 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                     </div>
                     <div class="flex items-center justify-between text-sm"><span class="text-muted-foreground">Water / Sale</span><span>{{ format(grand) }}</span></div>
                     <div class="flex items-center justify-between text-base font-semibold"><span>{{ form.new_bottle ? 'Total Collectable' : 'Total' }}</span><span class="text-brand">{{ format(collectable) }}</span></div>
+
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Cash Received</span>
+                        <input v-model.number="received" type="number" step="0.01" :placeholder="format(collectable)"
+                            class="w-28 rounded-md border-border bg-background text-right text-sm focus:border-brand focus:ring-brand" />
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button type="button" @click="quickCash(collectable)" class="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/20">Exact</button>
+                        <button v-for="n in [50,100,500,1000,5000]" :key="n" type="button" @click="quickCash(n)" class="rounded-full bg-muted px-2.5 py-1 text-xs font-medium hover:bg-brand/10 hover:text-brand">{{ n }}</button>
+                    </div>
+                    <div v-if="change > 0" class="flex items-center justify-between text-sm text-success">
+                        <span>Return / Change</span><span class="font-medium">{{ format(change) }}</span>
+                    </div>
+                    <div v-if="dueAmount > 0" class="flex items-center justify-between text-sm text-warning">
+                        <span>Balance (Udhaar)</span><span class="font-medium">{{ format(dueAmount) }}</span>
+                    </div>
+                    <p v-if="dueAmount > 0 && !form.customer_id" class="text-xs text-destructive">⚠ Udhaar ke liye customer select karein.</p>
+
                     <PrimaryButton class="w-full justify-center" :disabled="form.processing || !form.items.length" @click="complete">
-                        {{ form.type === 'credit' ? 'Save Credit Sale' : (form.new_bottle ? 'Sell Bottle + Deposit' : 'Complete Sale') }}
+                        {{ dueAmount > 0 ? `Complete — Udhaar ${format(dueAmount)}` : (form.new_bottle ? 'Sell Bottle + Deposit' : 'Complete Sale') }}
                     </PrimaryButton>
                 </div>
             </Card>

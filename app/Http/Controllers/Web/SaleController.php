@@ -32,7 +32,7 @@ class SaleController extends Controller
             'products' => Product::where('is_active', true)
                 ->where('is_service', false)
                 ->where('sale_price', '>', 0)
-                ->get(['id', 'name', 'sku', 'sale_price', 'wholesale_price', 'pack_size']),
+                ->get(['id', 'name', 'sku', 'barcode', 'sale_price', 'wholesale_price', 'pack_size']),
             // 19L refill service (deducts water only) + deposit config for the new-bottle action.
             'refillService' => Product::where('sku', \App\Models\Setting::get('sales', 'refill_service_sku') ?? '19L-REFILL')
                 ->first(['id', 'name', 'sku', 'sale_price']),
