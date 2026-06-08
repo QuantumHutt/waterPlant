@@ -4,8 +4,7 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import StatCard from '@/Components/StatCard.vue'
 import Card from '@/Components/ui/Card.vue'
 import {
-    FlaskConical, ShoppingCart, TrendingUp, AlertTriangle,
-    Truck, Wallet, PiggyBank,
+    FlaskConical, ShoppingCart, TrendingUp, AlertTriangle, Container, PiggyBank, Wallet,
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -13,13 +12,13 @@ const props = defineProps({
 })
 
 const cards = [
-    { key: 'todays_production', icon: FlaskConical, tone: 'brand' },
     { key: 'todays_sales', icon: ShoppingCart, tone: 'success' },
+    { key: 'todays_production', icon: FlaskConical, tone: 'brand' },
     { key: 'monthly_revenue', icon: TrendingUp, tone: 'brand' },
-    { key: 'profit_summary', icon: PiggyBank, tone: 'success' },
-    { key: 'outstanding_receivables', icon: Wallet, tone: 'warning' },
+    { key: 'active_bottles', icon: Container, tone: 'brand' },
+    { key: 'security_deposits', icon: PiggyBank, tone: 'warning' },
     { key: 'low_stock_alerts', icon: AlertTriangle, tone: 'destructive' },
-    { key: 'pending_deliveries', icon: Truck, tone: 'brand' },
+    { key: 'outstanding_receivables', icon: Wallet, tone: 'warning' },
 ]
 </script>
 
@@ -30,7 +29,7 @@ const cards = [
         <template #header>
             <div>
                 <h2 class="text-2xl font-semibold tracking-tight">Dashboard</h2>
-                <p class="text-sm text-muted-foreground">Operational overview of your water plant.</p>
+                <p class="text-sm text-muted-foreground">Live overview — {{ new Date().toLocaleDateString() }}</p>
             </div>
         </template>
 
@@ -45,32 +44,25 @@ const cards = [
             />
         </div>
 
-        <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card class="lg:col-span-2" title="Revenue Trend" subtitle="Wire up once Sales module lands">
-                <div class="flex h-56 items-center justify-center rounded-2xl bg-muted text-sm text-muted-foreground">
-                    Chart appears here once the Sales & Accounting modules are connected.
-                </div>
-            </Card>
-            <Card title="Quick Status">
-                <ul class="space-y-3 text-sm">
-                    <li class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Today's Production</span>
-                        <span class="font-medium">{{ metrics.todays_production.display }}</span>
-                    </li>
-                    <li class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Today's Sales</span>
-                        <span class="font-medium">{{ metrics.todays_sales.short }}</span>
-                    </li>
-                    <li class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Receivables</span>
-                        <span class="font-medium">{{ metrics.outstanding_receivables.short }}</span>
-                    </li>
-                    <li class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Pending Deliveries</span>
-                        <span class="font-medium">{{ metrics.pending_deliveries.display }}</span>
-                    </li>
-                </ul>
-            </Card>
-        </div>
+        <Card class="mt-4" title="Today at a glance">
+            <ul class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <li class="flex items-center justify-between rounded-2xl bg-muted/50 px-4 py-3">
+                    <span class="text-muted-foreground">Today's Sales</span>
+                    <span class="font-semibold">{{ metrics.todays_sales.display }}</span>
+                </li>
+                <li class="flex items-center justify-between rounded-2xl bg-muted/50 px-4 py-3">
+                    <span class="text-muted-foreground">Today's Production</span>
+                    <span class="font-semibold">{{ metrics.todays_production.display }}</span>
+                </li>
+                <li class="flex items-center justify-between rounded-2xl bg-muted/50 px-4 py-3">
+                    <span class="text-muted-foreground">Active Bottles with Customers</span>
+                    <span class="font-semibold">{{ metrics.active_bottles.display }}</span>
+                </li>
+                <li class="flex items-center justify-between rounded-2xl bg-muted/50 px-4 py-3">
+                    <span class="text-muted-foreground">Security Deposits Held</span>
+                    <span class="font-semibold">{{ metrics.security_deposits.display }}</span>
+                </li>
+            </ul>
+        </Card>
     </AppLayout>
 </template>

@@ -20,6 +20,7 @@ const props = defineProps({
     categories: { type: Object, required: true },
     types: { type: Array, default: () => [] },
     units: { type: Array, default: () => [] },
+    singleProducts: { type: Array, default: () => [] },
 })
 
 const { can } = usePermissions()
@@ -37,7 +38,8 @@ const editing = ref(null)
 
 const form = useForm({
     category_id: '', sku: '', barcode: '', name: '', description: '',
-    type: 'finished', unit: 'pcs', cost_price: 0, sale_price: 0,
+    type: 'finished', unit: 'pcs', unit_type: 'single', pack_size: 1, pack_of_product_id: null,
+    cost_price: 0, sale_price: 0,
     wholesale_price: null, reorder_level: 0, is_active: true, variants: [],
 })
 
@@ -53,7 +55,9 @@ function openEdit(p) {
     form.reset()
     Object.assign(form, {
         category_id: p.category_id, sku: p.sku, barcode: p.barcode, name: p.name,
-        description: p.description, type: p.type, unit: p.unit, cost_price: p.cost_price,
+        description: p.description, type: p.type, unit: p.unit,
+        unit_type: p.unit_type ?? 'single', pack_size: p.pack_size ?? 1, pack_of_product_id: p.pack_of_product_id,
+        cost_price: p.cost_price,
         sale_price: p.sale_price, wholesale_price: p.wholesale_price,
         reorder_level: p.reorder_level, is_active: p.is_active,
         variants: (p.variants ?? []).map((v) => ({ ...v })),
@@ -178,7 +182,25 @@ function destroy() {
                         </select>
                     </div>
                     <div><InputLabel value="Barcode" /><TextInput v-model="form.barcode" class="mt-1 block w-full" /><InputError :message="form.errors.barcode" class="mt-1" /></div>
+                    <div>
+                        <InputLabel value="Unit Type" />
+                        <select v-model="form.unit_type" class="mt-1 block w-full rounded-md border-border bg-background focus:border-brand focus:ring-brand">
+                            <option value="single">Single</option>
+                            <option value="pack">Pack / Pat</option>
+                        </select>
+                    </div>
                     <div><InputLabel value="Reorder Level" /><TextInput v-model.number="form.reorder_level" type="number" step="0.001" class="mt-1 block w-full" /></div>
+                    <template v-if="form.unit_type === 'pack'">
+                        <div>
+                            <InputLabel value="Base Single Bottle" />
+                            <select v-model="form.pack_of_product_id" class="mt-1 block w-full rounded-md border-border bg-background focus:border-brand focus:ring-brand">
+                                <option :value="null">— select —</option>
+                                <option v-for="s in singleProducts" :key="s.id" :value="s.id">{{ s.name }}</option>
+                            </select>
+                            <InputError :message="form.errors.pack_of_product_id" class="mt-1" />
+                        </div>
+                        <div><InputLabel value="Bottles per Pack" /><TextInput v-model.number="form.pack_size" type="number" min="1" class="mt-1 block w-full" /><p class="mt-1 text-xs text-muted-foreground">Selling 1 pack deducts this many bottles from the base stock.</p></div>
+                    </template>
                     <div><InputLabel value="Cost Price" /><TextInput v-model.number="form.cost_price" type="number" step="0.0001" class="mt-1 block w-full" required /></div>
                     <div><InputLabel value="Sale Price" /><TextInput v-model.number="form.sale_price" type="number" step="0.01" class="mt-1 block w-full" required /></div>
                     <div><InputLabel value="Wholesale Price" /><TextInput v-model.number="form.wholesale_price" type="number" step="0.01" class="mt-1 block w-full" /></div>

@@ -13,8 +13,13 @@ class InsufficientStockException extends RuntimeException
         return new self("Insufficient stock for {$product}: available {$available}, requested {$requested}.");
     }
 
-    public function render(): \Illuminate\Http\JsonResponse
+    public function render(\Illuminate\Http\Request $request)
     {
-        return \App\Support\ApiResponse::error($this->getMessage(), 422);
+        if ($request->expectsJson()) {
+            return \App\Support\ApiResponse::error($this->getMessage(), 422);
+        }
+
+        // Web / Inertia: bounce back with an error flash so the toast shows.
+        return back()->with('error', $this->getMessage());
     }
 }

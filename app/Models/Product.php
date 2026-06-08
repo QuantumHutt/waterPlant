@@ -27,7 +27,7 @@ class Product extends Model implements Auditable
     use SoftDeletes;
 
     protected $fillable = [
-        'category_id', 'sku', 'barcode', 'name', 'description', 'type', 'is_service', 'unit', 'water_litres',
+        'category_id', 'sku', 'barcode', 'name', 'description', 'type', 'is_service', 'unit', 'water_litres', 'pack_size', 'unit_type', 'pack_of_product_id',
         'cost_price', 'sale_price', 'wholesale_price', 'reorder_level', 'opening_stock',
         'track_inventory', 'is_active', 'created_by', 'updated_by',
     ];
@@ -37,6 +37,7 @@ class Product extends Model implements Auditable
         'unit' => ProductUnit::class,
         'is_service' => 'boolean',
         'water_litres' => 'decimal:3',
+        'pack_size' => 'integer',
         'cost_price' => 'decimal:4',
         'sale_price' => 'decimal:2',
         'wholesale_price' => 'decimal:2',
@@ -54,6 +55,17 @@ class Product extends Model implements Auditable
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    /** The single bottle this pack bundles (null for normal products). */
+    public function packOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'pack_of_product_id');
+    }
+
+    public function isPack(): bool
+    {
+        return $this->pack_of_product_id !== null;
     }
 
     public function stockItems(): HasMany

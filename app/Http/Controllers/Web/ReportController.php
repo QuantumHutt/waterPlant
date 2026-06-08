@@ -24,7 +24,12 @@ class ReportController extends Controller
         $from = $request->input('from', now()->startOfMonth()->toDateString());
         $to = $request->input('to', now()->toDateString());
 
-        $sales = Invoice::whereBetween('invoice_date', [$from, $to]);
+        // Active sales only — returned/cancelled invoices are excluded from totals.
+        $sales = Invoice::whereBetween('invoice_date', [$from, $to])
+            ->whereNotIn('status', ['cancelled', 'returned']);
+
+        // Returns within the period (for visibility).
+        $returns = \App\Models\SalesReturn::whereBetween('returned_at', [$from, $to]);
 
         return Inertia::render('Reports/Index', [
             'filters' => ['from' => $from, 'to' => $to],
@@ -33,6 +38,8 @@ class ReportController extends Controller
                 'total' => (float) (clone $sales)->sum('grand_total'),
                 'received' => (float) (clone $sales)->sum('paid_total'),
                 'outstanding' => (float) (clone $sales)->sum('balance'),
+                'returns_count' => (clone $returns)->count(),
+                'returns_total' => (float) (clone $returns)->sum('total'),
                 'by_type' => (clone $sales)->select('type', DB::raw('COUNT(*) as count'), DB::raw('SUM(grand_total) as total'))
                     ->groupBy('type')->get(),
             ],
@@ -67,6 +74,7 @@ class ReportController extends Controller
                 ->join('products', 'products.id', '=', 'invoice_items.product_id')
                 ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
                 ->whereBetween('invoices.invoice_date', [$from, $to])
+                ->whereNotIn('invoices.status', ['cancelled', 'returned'])
                 ->select('products.name', DB::raw('SUM(invoice_items.quantity) as qty'), DB::raw('SUM(invoice_items.line_total) as total'))
                 ->groupBy('products.id', 'products.name')->orderByDesc('total')->limit(10)->get(),
         ]);

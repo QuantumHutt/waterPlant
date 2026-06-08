@@ -63,7 +63,10 @@ function apply() { router.get(route('reports.index'), { from: from.value, to: to
                         <tr v-for="r in sales.by_type" :key="r.type" class="border-b border-border/60"><td class="py-2 pr-4 capitalize">{{ r.type }}</td><td class="py-2 pr-4 text-right">{{ r.count }}</td><td class="py-2 pr-0 text-right">{{ format(r.total) }}</td></tr>
                         <tr v-if="!sales.by_type.length"><td colspan="3" class="py-6 text-center text-muted-foreground">No sales.</td></tr>
                     </tbody>
-                    <tfoot><tr class="font-semibold border-t border-border"><td class="py-2">Received / Outstanding</td><td></td><td class="py-2 text-right">{{ format(sales.received) }} / {{ format(sales.outstanding) }}</td></tr></tfoot>
+                    <tfoot>
+                        <tr class="border-t border-border"><td class="py-2 text-muted-foreground">Received / Outstanding</td><td></td><td class="py-2 text-right">{{ format(sales.received) }} / {{ format(sales.outstanding) }}</td></tr>
+                        <tr v-if="sales.returns_count"><td class="py-2 text-destructive">Returns ({{ sales.returns_count }})</td><td></td><td class="py-2 text-right text-destructive">- {{ format(sales.returns_total) }}</td></tr>
+                    </tfoot>
                 </table>
             </Card>
 

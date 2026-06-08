@@ -38,26 +38,59 @@ class ProductSeeder extends Seeder
             );
         }
 
-        // 2. SEALED bottled-water products — each size is its own finished product.
-        //    Selling these reduces finished-goods inventory only (water already accounted at production).
-        $sealed = [
+        // 2. SINGLE bottled-water products — inventory is tracked here, at single-bottle level.
+        // [sku, name, cost, sale]
+        $singles = [
             ['SEAL-250', '250ml Bottle', 6, 20],
             ['SEAL-500', '500ml Bottle', 8, 30],
             ['SEAL-1000', '1 Liter Bottle', 12, 50],
             ['SEAL-1500', '1.5 Liter Bottle', 16, 70],
             ['SEAL-6000', '6 Liter Bottle', 45, 150],
         ];
-        foreach ($sealed as [$sku, $name, $cost, $sale]) {
-            Product::firstOrCreate(['sku' => $sku], [
+        $single = [];
+        foreach ($singles as [$sku, $name, $cost, $sale]) {
+            $single[$sku] = Product::firstOrCreate(['sku' => $sku], [
                 'category_id' => $cat['bottled_water']->id,
                 'name' => $name,
                 'type' => ProductType::Finished->value,
                 'unit' => ProductUnit::Pcs->value,
+                'unit_type' => 'single',
+                'pack_size' => 1,
                 'water_litres' => 0,        // sealed goods don't deduct bulk water again
                 'cost_price' => $cost,
                 'sale_price' => $sale,
                 'reorder_level' => 100,
                 'track_inventory' => true,
+                'is_active' => true,
+            ]);
+        }
+
+        // 2a. PACK / PAT products — NO own stock; selling one deducts `pack_size` base bottles.
+        //     Pack price = single price × qty with a small wholesale discount.
+        // [sku, name, base_sku, qty]
+        $packs = [
+            ['PACK-250-12', '250ml x 12 Pack', 'SEAL-250', 12],
+            ['PACK-500-12', '500ml x 12 Pack', 'SEAL-500', 12],
+            ['PACK-500-24', '500ml x 24 Pack', 'SEAL-500', 24],
+            ['PACK-1000-12', '1 Liter x 12 Pack', 'SEAL-1000', 12],
+            ['PACK-1500-6', '1.5 Liter x 6 Pack', 'SEAL-1500', 6],
+            ['PACK-6000-6', '6 Liter x 6 Pack', 'SEAL-6000', 6],
+        ];
+        foreach ($packs as [$sku, $name, $baseSku, $qty]) {
+            $base = $single[$baseSku];
+            Product::firstOrCreate(['sku' => $sku], [
+                'category_id' => $cat['bottled_water']->id,
+                'name' => $name,
+                'type' => ProductType::Finished->value,
+                'unit' => ProductUnit::Pcs->value,
+                'unit_type' => 'pack',
+                'pack_size' => $qty,
+                'pack_of_product_id' => $base->id,
+                'water_litres' => 0,
+                'cost_price' => round((float) $base->cost_price * $qty, 2),
+                'sale_price' => round((float) $base->sale_price * $qty * 0.95, 0), // ~5% pack discount
+                'reorder_level' => 0,
+                'track_inventory' => false,   // packs hold no stock of their own
                 'is_active' => true,
             ]);
         }

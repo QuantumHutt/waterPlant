@@ -4,34 +4,53 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Models\Invoice;
+use App\Models\ProductionBatch;
 use App\Support\Money;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
- * Aggregates the dashboard KPIs. Domain modules (sales, production, inventory,
- * accounting) are wired in as they are built; until then the service returns
- * zeroed/placeholder figures so the dashboard renders end-to-end.
+ * Live dashboard KPIs computed from sales, production, inventory and gallon data.
  */
 class DashboardService extends BaseService
 {
     /** @return array<string, mixed> */
     public function metrics(): array
     {
+        $today = now()->toDateString();
+        $monthStart = now()->startOfMonth()->toDateString();
+
+        // Sales exclude cancelled/returned invoices.
+        $soldToday = (float) Invoice::whereDate('invoice_date', $today)
+            ->whereNotIn('status', ['cancelled', 'returned'])->sum('grand_total');
+
+        $soldMonth = (float) Invoice::whereBetween('invoice_date', [$monthStart, $today])
+            ->whereNotIn('status', ['cancelled', 'returned'])->sum('grand_total');
+
+        $waterToday = (float) ProductionBatch::whereDate('production_date', $today)->sum('filtered_water_litres');
+
+        $receivables = (float) Invoice::whereNotIn('status', ['cancelled', 'returned'])->sum('balance');
+
+        $activeBottles = Schema::hasTable('customer_gallon_balances')
+            ? (int) DB::table('customer_gallon_balances')->sum('held_qty') : 0;
+        $deposits = Schema::hasTable('customer_gallon_balances')
+            ? (float) DB::table('customer_gallon_balances')->sum('deposit_held') : 0;
+
         return [
-            'todays_production' => $this->stat(0, 'bottles', 'Today\'s Production'),
-            'todays_sales' => $this->money(0, 'Today\'s Sales'),
-            'monthly_revenue' => $this->money(0, 'Monthly Revenue'),
-            'outstanding_receivables' => $this->money(0, 'Outstanding Receivables'),
-            'profit_summary' => $this->money(0, 'Profit (This Month)'),
+            'todays_sales' => $this->money($soldToday, "Today's Sales"),
+            'todays_production' => $this->stat((int) round($waterToday), 'L', "Today's Production"),
+            'monthly_revenue' => $this->money($soldMonth, 'Monthly Revenue'),
             'low_stock_alerts' => $this->stat($this->lowStockCount(), 'items', 'Low Stock Alerts'),
-            'pending_deliveries' => $this->stat(0, 'orders', 'Pending Deliveries'),
+            'active_bottles' => $this->stat($activeBottles, 'bottles', 'Active Bottles (with customers)'),
+            'security_deposits' => $this->money($deposits, 'Security Deposits Held'),
+            'outstanding_receivables' => $this->money($receivables, 'Outstanding Receivables'),
         ];
     }
 
-    /** Count of inventory-tracked products at or below their reorder level. */
     private function lowStockCount(): int
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('stock_items')) {
+        if (! Schema::hasTable('stock_items')) {
             return 0;
         }
 

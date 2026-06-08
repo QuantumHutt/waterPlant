@@ -17,7 +17,8 @@ class DatabaseSeeder extends Seeder
             SettingSeeder::class,
             WarehouseSeeder::class,
             ProductSeeder::class,
-            CustomerSeeder::class,
+            OpeningStockSeeder::class,
+            // CustomerSeeder::class,
             SupplierSeeder::class,
             ChartOfAccountsSeeder::class,
         ]);

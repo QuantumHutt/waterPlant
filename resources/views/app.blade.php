@@ -4,7 +4,10 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title inertia>{{ config('app.name', 'Water Plant ERP') }}</title>
+        <title inertia>{{ config('app.name', 'BlueRoot') }}</title>
+
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="mask-icon" href="/favicon.svg" color="#7c3aed">
 
         {{-- Apply theme + brand before paint to avoid flash --}}
         <script>

@@ -35,7 +35,7 @@ class SuperAdminSeeder extends Seeder
         $role = Role::findOrCreate(RoleName::SuperAdmin->value, 'web');
         $role->syncPermissions(Permissions::all());
 
-        $email = env('SUPER_ADMIN_EMAIL', 'superadmin@waterplant.test');
+        $email = env('SUPER_ADMIN_EMAIL', '');
 
         $user = User::withTrashed()->updateOrCreate(
             ['email' => $email],

@@ -41,7 +41,7 @@ class InventoryController extends Controller
             'filters' => $request->only(['warehouse_id', 'search', 'low_stock']),
             'warehouses' => WarehouseResource::collection(Warehouse::where('is_active', true)->get()),
             'products' => Product::where('is_active', true)->where('track_inventory', true)
-                ->get(['id', 'name', 'sku', 'cost_price']),
+                ->get(['id', 'name', 'sku', 'cost_price', 'pack_size']),
         ]);
     }
 

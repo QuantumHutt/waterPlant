@@ -32,7 +32,7 @@ class SaleController extends Controller
             'products' => Product::where('is_active', true)
                 ->where('is_service', false)
                 ->where('sale_price', '>', 0)
-                ->get(['id', 'name', 'sku', 'sale_price', 'wholesale_price']),
+                ->get(['id', 'name', 'sku', 'sale_price', 'wholesale_price', 'pack_size']),
             // 19L refill service (deducts water only) + deposit config for the new-bottle action.
             'refillService' => Product::where('sku', \App\Models\Setting::get('sales', 'refill_service_sku') ?? '19L-REFILL')
                 ->first(['id', 'name', 'sku', 'sale_price']),
@@ -42,9 +42,27 @@ class SaleController extends Controller
 
     public function store(SaleRequest $request): RedirectResponse
     {
-        $this->service->create($request->validated());
+        $invoice = $this->service->create($request->validated());
 
-        return back()->with('success', 'Sale completed.');
+        return back()
+            ->with('success', "Sale completed — {$invoice->invoice_number}.")
+            ->with('print_invoice_id', $invoice->id);
+    }
+
+    /** Thermal receipt (58mm / 80mm) — standalone print page. */
+    public function receipt(Request $request, Invoice $invoice): \Illuminate\View\View
+    {
+        abort_unless($request->user()->can('sales.view'), 403);
+
+        $invoice->load(['items.product', 'customer']);
+        $size = $request->integer('size', 80) === 58 ? 58 : 80;
+
+        return view('receipts.thermal', [
+            'invoice' => $invoice,
+            'size' => $size,
+            'company' => \App\Models\Setting::allGrouped()['company'] ?? [],
+            'cashier' => $request->user()->name,
+        ]);
     }
 
     public function payment(Request $request, Invoice $invoice): RedirectResponse

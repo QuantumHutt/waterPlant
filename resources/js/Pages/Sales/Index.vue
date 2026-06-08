@@ -1,6 +1,6 @@
 <script setup>
-import { Head, useForm, router } from '@inertiajs/vue3'
-import { ref, computed } from 'vue'
+import { Head, useForm, router, usePage } from '@inertiajs/vue3'
+import { ref, computed, watch } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import Card from '@/Components/ui/Card.vue'
 import InputLabel from '@/Components/InputLabel.vue'
@@ -8,11 +8,26 @@ import TextInput from '@/Components/TextInput.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useCurrency } from '@/composables/useCurrency'
-import { Plus, Minus, Trash2, RotateCcw, Container } from 'lucide-vue-next'
+import { Plus, Minus, Trash2, RotateCcw, Container, Printer } from 'lucide-vue-next'
 
 const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, bottleDeposit: { type: Number, default: 1000 } })
 const { can } = usePermissions()
 const { format } = useCurrency()
+const page = usePage()
+
+// Receipt printer width (58mm / 80mm) — remembered per device.
+const receiptSize = ref(Number(localStorage.getItem('receipt_size')) || 80)
+watch(receiptSize, (v) => localStorage.setItem('receipt_size', v))
+
+function openReceipt(id) {
+    window.open(route('sales.receipt', id) + '?size=' + receiptSize.value, '_blank', 'width=420,height=640')
+}
+
+// Candela-style: as soon as a sale completes, pop the thermal receipt to print.
+watch(
+    () => page.props.flash?.print_invoice_id,
+    (id) => { if (id) openReceipt(id) },
+)
 
 // 19L REFILL: customer brings own bottle. Sell ONE refill service (deducts 19L water, no bottle).
 function addRefill() {
@@ -48,10 +63,14 @@ const form = useForm({
 })
 form.warehouse_id = props.warehouses[0]?.id ?? ''
 
-function addToCart(p) {
-    const existing = form.items.find((i) => i.product_id === p.id)
-    if (existing) { existing.quantity++; return }
-    form.items.push({ product_id: p.id, name: p.name, quantity: 1, unit_price: Number(p.sale_price), discount: 0, tax: 0 })
+function addToCart(p, qty = 1, label = null) {
+    const existing = form.items.find((i) => i.product_id === p.id && !label)
+    if (existing && !label) { existing.quantity += qty; return }
+    form.items.push({ product_id: p.id, name: label ?? p.name, quantity: qty, unit_price: Number(p.sale_price), discount: 0, tax: 0 })
+}
+// Add a full carton/"pat": one line of pack_size bottles (stock deducts pack_size).
+function addPack(p) {
+    addToCart(p, p.pack_size, `${p.name} — Pack (${p.pack_size})`)
 }
 function inc(it) { it.quantity++ }
 function dec(it) { it.quantity = Math.max(1, it.quantity - 1) }
@@ -84,7 +103,16 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
     <Head title="Sales / POS" />
     <AppLayout>
         <template #header>
-            <div><h2 class="text-2xl font-semibold tracking-tight">Sales / POS</h2><p class="text-sm text-muted-foreground">Billing, credit sales &amp; returns.</p></div>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div><h2 class="text-2xl font-semibold tracking-tight">Sales / POS</h2><p class="text-sm text-muted-foreground">Billing, credit sales &amp; returns. Receipt auto-prints after each sale.</p></div>
+                <label class="flex items-center gap-2 text-sm">
+                    <span class="text-muted-foreground">Receipt</span>
+                    <select v-model.number="receiptSize" class="rounded-full border-border bg-background text-sm focus:border-brand focus:ring-brand">
+                        <option :value="58">58mm</option>
+                        <option :value="80">80mm</option>
+                    </select>
+                </label>
+            </div>
         </template>
 
         <div v-if="can('sales.create')" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -102,10 +130,16 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                 </div>
                 <input v-model="search" placeholder="Search product…" class="mb-3 w-full rounded-full border-border bg-background px-4 py-2 text-sm focus:border-brand focus:ring-brand" />
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    <button v-for="p in filtered" :key="p.id" @click="addToCart(p)" class="rounded-2xl ring-1 ring-border p-3 text-left hover:ring-brand hover:bg-muted transition">
-                        <p class="text-sm font-medium truncate">{{ p.name }}</p>
-                        <p class="text-xs text-muted-foreground">{{ format(p.sale_price) }}</p>
-                    </button>
+                    <div v-for="p in filtered" :key="p.id" class="rounded-2xl ring-1 ring-border p-3 hover:ring-brand transition">
+                        <button type="button" @click="addToCart(p)" class="block w-full text-left">
+                            <p class="text-sm font-medium truncate">{{ p.name }}</p>
+                            <p class="text-xs text-muted-foreground">{{ format(p.sale_price) }}</p>
+                        </button>
+                        <button v-if="p.pack_size > 1" type="button" @click="addPack(p)"
+                            class="mt-2 w-full rounded-full bg-muted px-2 py-1 text-[11px] font-medium hover:bg-brand/10 hover:text-brand">
+                            + Pack ×{{ p.pack_size }}
+                        </button>
+                    </div>
                 </div>
             </Card>
 
@@ -171,7 +205,10 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                             <td class="py-3 pr-4 text-right" :class="inv.balance > 0 ? 'text-warning' : ''">{{ format(inv.balance) }}</td>
                             <td class="py-3 pr-4"><span class="rounded-full px-2 py-0.5 text-xs capitalize" :class="statusTone(inv.status)">{{ inv.status }}</span></td>
                             <td class="py-3 pr-0 text-right">
-                                <button v-if="inv.status !== 'returned' && can('sales.return')" @click="returnInvoice(inv)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Return"><RotateCcw class="size-4" /></button>
+                                <div class="flex items-center justify-end gap-1">
+                                    <button @click="openReceipt(inv.id)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Print receipt"><Printer class="size-4" /></button>
+                                    <button v-if="inv.status !== 'returned' && can('sales.return')" @click="returnInvoice(inv)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Return"><RotateCcw class="size-4" /></button>
+                                </div>
                             </td>
                         </tr>
                         <tr v-if="!invoices.data.length"><td colspan="7" class="py-8 text-center text-muted-foreground">No invoices yet.</td></tr>

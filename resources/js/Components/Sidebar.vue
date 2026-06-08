@@ -1,6 +1,7 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3'
 import { usePermissions } from '@/composables/usePermissions'
+import BlueRootLogo from '@/Components/BlueRootLogo.vue'
 import { computed } from 'vue'
 import {
     LayoutDashboard, Package, Boxes, FlaskConical, Container, ShoppingCart,
@@ -48,14 +49,8 @@ const adminNav = computed(() => [
 <template>
     <aside class="flex h-full w-72 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
         <!-- Brand -->
-        <div class="flex items-center gap-3 px-6 py-5">
-            <span class="flex size-10 items-center justify-center rounded-2xl bg-sidebar-gradient text-white">
-                <Droplets class="size-5" />
-            </span>
-            <div class="min-w-0">
-                <p class="truncate font-semibold leading-tight">{{ page.props.settings?.company?.name ?? 'Water Plant ERP' }}</p>
-                <p class="text-xs text-sidebar-foreground/50">ERP System</p>
-            </div>
+        <div class="px-6 py-5">
+            <BlueRootLogo :invert="true" size="md" />
         </div>
 
         <nav class="flex-1 overflow-y-auto px-3 pb-6">

@@ -145,6 +145,24 @@ class WaterProductionRefillTest extends TestCase
         $this->assertDatabaseHas('customer_gallon_balances', ['customer_id' => $customer->id, 'held_qty' => 1, 'deposit_held' => 1000]);
     }
 
+    public function test_pack_sale_deducts_base_bottles_from_single_stock(): void
+    {
+        $single = Product::where('sku', 'SEAL-500')->firstOrFail();   // base single
+        $pack = Product::where('sku', 'PACK-500-24')->firstOrFail();  // 24-pack, no own stock
+        app(InventoryService::class)->stockIn($this->warehouse->id, $single->id, 100, 8);
+
+        // Sell 2 packs (= 48 bottles).
+        app(SaleService::class)->create([
+            'warehouse_id' => $this->warehouse->id,
+            'type' => 'pos',
+            'items' => [['product_id' => $pack->id, 'quantity' => 2, 'unit_price' => 684]],
+        ]);
+
+        // Base single stock dropped by 48; the pack itself never held stock.
+        $this->assertSame(52.0, (float) StockItem::where('product_id', $single->id)->sum('quantity'));
+        $this->assertSame(0, StockItem::where('product_id', $pack->id)->count());
+    }
+
     public function test_sealed_bottle_sale_reduces_finished_goods_only(): void
     {
         $sealed = Product::where('sku', 'SEAL-500')->firstOrFail();

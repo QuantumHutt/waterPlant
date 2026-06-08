@@ -16,8 +16,12 @@ class UnbalancedJournalException extends RuntimeException
             ." ≠ credits ".number_format($credit, 2)." (difference Rs {$diff}).");
     }
 
-    public function render(): \Illuminate\Http\JsonResponse
+    public function render(\Illuminate\Http\Request $request)
     {
-        return \App\Support\ApiResponse::error($this->getMessage(), 422);
+        if ($request->expectsJson()) {
+            return \App\Support\ApiResponse::error($this->getMessage(), 422);
+        }
+
+        return back()->with('error', $this->getMessage());
     }
 }

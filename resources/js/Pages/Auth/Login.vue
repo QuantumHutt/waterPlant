@@ -35,16 +35,16 @@ const submit = () => {
                             <Droplets class="size-6" />
                         </span>
                         <div>
-                            <p class="text-lg font-semibold leading-tight">Water Plant ERP</p>
-                            <p class="text-sm text-white/70">Production · Sales · Accounting</p>
+                            <p class="text-lg font-semibold leading-tight">BlueRoot</p>
+                            <p class="text-sm text-white/70">AL-Noor Water Plant &amp; Filter House</p>
                         </div>
                     </div>
                 </div>
                 <div class="relative space-y-4">
-                    <h2 class="text-3xl font-semibold leading-tight">Run your water filter plant on one platform.</h2>
-                    <p class="text-white/80">Inventory, production batches, gallon tracking, POS, double-entry accounting and reports — branch ready.</p>
+                    <h2 class="text-3xl font-semibold leading-tight">Run your water plant on one platform.</h2>
+                    <p class="text-white/80">Inventory, production batches, gallon &amp; deposit tracking, POS, double-entry accounting and reports.</p>
                 </div>
-                <p class="relative text-xs text-white/60">© {{ new Date().getFullYear() }} Water Plant ERP</p>
+                <p class="relative text-xs text-white/60">© {{ new Date().getFullYear() }} BlueRoot — AL-Noor Water Plant &amp; Filter House</p>
             </div>
 
             <!-- Form panel -->
@@ -54,7 +54,7 @@ const submit = () => {
                         <span class="flex size-11 items-center justify-center rounded-2xl bg-sidebar-gradient text-white">
                             <Droplets class="size-5" />
                         </span>
-                        <p class="text-lg font-semibold">Water Plant ERP</p>
+                        <p class="text-lg font-semibold">BlueRoot</p>
                     </div>
 
                     <h1 class="text-2xl font-semibold tracking-tight">Welcome back</h1>

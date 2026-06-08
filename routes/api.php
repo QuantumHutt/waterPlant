@@ -7,14 +7,16 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1')->group(function () {
+// All API route names are prefixed with "api." so they never collide with the
+// web (Inertia) route names used by route() in the Vue pages.
+Route::prefix('v1')->name('api.')->group(function () {
     // Public
-    Route::post('login', [AuthController::class, 'login'])->name('api.login');
+    Route::post('login', [AuthController::class, 'login'])->name('login');
 
     // Authenticated (Sanctum token)
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('me', [AuthController::class, 'me'])->name('api.me');
-        Route::post('logout', [AuthController::class, 'logout'])->name('api.logout');
+        Route::get('me', [AuthController::class, 'me'])->name('me');
+        Route::post('logout', [AuthController::class, 'logout'])->name('logout');
 
         Route::apiResource('users', UserController::class);
 
@@ -23,13 +25,13 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'store', 'destroy']);
 
         // Inventory
-        Route::prefix('inventory')->group(function () {
-            Route::get('/', [InventoryController::class, 'index'])->name('api.inventory.index');
-            Route::get('movements', [InventoryController::class, 'movements'])->name('api.inventory.movements');
-            Route::post('stock-in', [InventoryController::class, 'stockIn'])->name('api.inventory.stock-in');
-            Route::post('stock-out', [InventoryController::class, 'stockOut'])->name('api.inventory.stock-out');
-            Route::post('transfer', [InventoryController::class, 'transfer'])->name('api.inventory.transfer');
-            Route::post('adjust', [InventoryController::class, 'adjust'])->name('api.inventory.adjust');
+        Route::prefix('inventory')->name('inventory.')->group(function () {
+            Route::get('/', [InventoryController::class, 'index'])->name('index');
+            Route::get('movements', [InventoryController::class, 'movements'])->name('movements');
+            Route::post('stock-in', [InventoryController::class, 'stockIn'])->name('stock-in');
+            Route::post('stock-out', [InventoryController::class, 'stockOut'])->name('stock-out');
+            Route::post('transfer', [InventoryController::class, 'transfer'])->name('transfer');
+            Route::post('adjust', [InventoryController::class, 'adjust'])->name('adjust');
         });
     });
 });

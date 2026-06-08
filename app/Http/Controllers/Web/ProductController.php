@@ -38,6 +38,9 @@ class ProductController extends Controller
             'categories' => ProductCategoryResource::collection(ProductCategory::where('is_active', true)->orderBy('name')->get()),
             'types' => collect(ProductType::cases())->map(fn ($t) => ['value' => $t->value, 'label' => $t->label()]),
             'units' => collect(ProductUnit::cases())->map(fn ($u) => ['value' => $u->value, 'label' => $u->label()]),
+            // Single products available as a pack's base.
+            'singleProducts' => Product::where('is_active', true)->where('unit_type', 'single')
+                ->orderBy('name')->get(['id', 'name', 'sku']),
         ]);
     }
 

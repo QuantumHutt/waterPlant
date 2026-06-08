@@ -14,10 +14,11 @@ class SettingSeeder extends Seeder
     {
         $defaults = [
             'company' => [
-                'name' => 'Water Filter Plant',
-                'legal_name' => 'Water Filter Plant (Pvt) Ltd',
-                'phone' => '+92 300 0000000',
-                'email' => 'info@waterplant.test',
+                'name' => 'AL-Noor Water Plant & Filter House',
+                'brand' => 'BlueRoot',
+                'legal_name' => 'AL-Noor Water Plant & Filter House',
+                'phone' => '+92 3054662213',
+                'email' => 'info@blueroot.pk',
                 'address' => 'Industrial Area, Pakistan',
                 'logo' => null,
                 'ntn' => '',

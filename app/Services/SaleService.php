@@ -67,9 +67,10 @@ class SaleService extends BaseService
                 'discount' => $discount,
                 'tax_total' => round($taxTotal, 2),
                 'grand_total' => $grand,
-                'paid_total' => $paid,
-                'balance' => round($grand - $paid, 2),
-                'status' => $this->status($grand, $paid),
+                // Start unpaid; the payment below applies the amount exactly once.
+                'paid_total' => 0,
+                'balance' => $grand,
+                'status' => 'unpaid',
                 'note' => $data['note'] ?? null,
                 'created_by' => auth()->id(),
             ]);
@@ -115,6 +116,20 @@ class SaleService extends BaseService
             return;
         }
         $qty = (float) $line['quantity'];
+
+        // A pack/"pat" deducts pack_size base bottles from the single product's stock.
+        if ($product->isPack()) {
+            $this->inventory->move([
+                'warehouse_id' => $invoice->warehouse_id,
+                'product_id' => $product->pack_of_product_id,
+                'type' => StockMovementType::Sale,
+                'quantity' => $qty * max(1, (int) $product->pack_size),
+                'reference' => $invoice,
+                'note' => "Pack ({$product->pack_size}) — Invoice {$invoice->invoice_number}",
+            ]);
+
+            return;
+        }
 
         if ($product->track_inventory && ! $product->is_service) {
             $this->inventory->move([
