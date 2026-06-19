@@ -70,6 +70,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('sales', [SaleController::class, 'index'])->name('sales.index');
     Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
     Route::get('sales/{invoice}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');
+    Route::get('sales/{invoice}/invoice', [SaleController::class, 'invoice'])->name('sales.invoice');
     Route::post('sales/{invoice}/payment', [SaleController::class, 'payment'])->name('sales.payment');
     Route::post('sales/{invoice}/return', [SaleController::class, 'returnInvoice'])->name('sales.return');
 

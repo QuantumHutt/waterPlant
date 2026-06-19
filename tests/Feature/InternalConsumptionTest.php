@@ -20,7 +20,7 @@ class InternalConsumptionTest extends TestCase {
     $c=app(InternalConsumptionService::class)->record(['warehouse_id'=>$this->wh(),'product_id'=>$p->id,'quantity'=>10,'reason'=>'ghar']);
     $this->assertSame($before-10,(float)StockItem::where('product_id',$p->id)->sum('quantity')); // stock down
     $this->assertSame(0,Invoice::count());                 // NO sale
-    $this->assertEqualsWithDelta(80.0,(float)$c->total_cost,0.01); // 10*8 cost recorded
+    $this->assertEqualsWithDelta(130.0,(float)$c->total_cost,0.01); // 10 * 13 (avg cost) recorded
     $this->assertSame(0.0,(float)$c->amount_paid);
     $this->assertFalse((bool)$c->is_paid);
     // Dashboard sales unaffected.
@@ -29,8 +29,8 @@ class InternalConsumptionTest extends TestCase {
   public function test_paid_at_cost(){
     $p=Product::where('sku','SEAL-500')->first();
     $c=app(InternalConsumptionService::class)->record(['warehouse_id'=>$this->wh(),'product_id'=>$p->id,'quantity'=>5,'pay_at_cost'=>true]);
-    $this->assertEqualsWithDelta(40.0,(float)$c->total_cost,0.01);
-    $this->assertEqualsWithDelta(40.0,(float)$c->amount_paid,0.01);
+    $this->assertEqualsWithDelta(65.0,(float)$c->total_cost,0.01); // 5 * 13
+    $this->assertEqualsWithDelta(65.0,(float)$c->amount_paid,0.01);
     $this->assertTrue((bool)$c->is_paid);
     $this->assertSame(0,Invoice::count()); // still not a sale
   }

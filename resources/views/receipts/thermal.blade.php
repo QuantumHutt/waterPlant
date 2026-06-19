@@ -37,13 +37,9 @@
         @media screen { body { box-shadow: 0 0 0 1px #ddd; margin-top: 16px; } }
     </style>
 </head>
-<body onload="window.print()">
+<body>
     <div class="center">
-        <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <rect width="64" height="64" rx="14" fill="#000"/>
-            <path d="M32 14c7 9 12 15 12 22a12 12 0 0 1-24 0c0-7 5-13 12-22z" fill="#fff"/>
-        </svg>
-        <div class="brand">BlueRoot</div>
+        <img src="{{ asset('images/blueroot-logo.png') }}" alt="BlueRoot" style="height:40px;width:auto;margin:0 auto 4px;display:block;">
         <div class="muted">{{ $company['name'] ?? 'AL-Noor Water Plant & Filter House' }}</div>
         @if(!empty($company['phone']))<div class="muted">{{ $company['phone'] }}</div>@endif
         @if(!empty($company['address']))<div class="muted">{{ $company['address'] }}</div>@endif
@@ -103,8 +99,10 @@
     </div>
 
     <script>
-        // Close the print tab after printing (or cancel).
-        window.onafterprint = function () { window.close(); };
+        // Fallback: if opened directly (not via the POS iframe), print on load.
+        if (window.self === window.top) {
+            window.addEventListener('load', function () { window.print(); });
+        }
     </script>
 </body>
 </html>

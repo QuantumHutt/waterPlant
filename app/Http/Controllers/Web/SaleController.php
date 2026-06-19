@@ -101,6 +101,20 @@ class SaleController extends Controller
         ]);
     }
 
+    /** Colorful, branded A4 invoice (normal printer / PDF). */
+    public function invoice(Request $request, Invoice $invoice): \Illuminate\View\View
+    {
+        abort_unless($request->user()->can('sales.view'), 403);
+
+        $invoice->load(['items.product', 'customer']);
+
+        return view('invoices.print', [
+            'invoice' => $invoice,
+            'company' => \App\Models\Setting::allGrouped()['company'] ?? [],
+            'cashier' => $request->user()->name,
+        ]);
+    }
+
     public function payment(Request $request, Invoice $invoice): RedirectResponse
     {
         abort_unless($request->user()->can('sales.update'), 403);

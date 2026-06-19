@@ -41,11 +41,9 @@ class ProductSeeder extends Seeder
         // 2. SINGLE bottled-water products — inventory is tracked here, at single-bottle level.
         // [sku, name, cost, sale]
         $singles = [
-            ['SEAL-250', '250ml Bottle', 6, 20],
-            ['SEAL-500', '500ml Bottle', 8, 30],
-            ['SEAL-1000', '1 Liter Bottle', 12, 50],
-            ['SEAL-1500', '1.5 Liter Bottle', 16, 70],
-            ['SEAL-6000', '6 Liter Bottle', 45, 150],
+            ['SEAL-500', '500ml Bottle', 13, 30],     // empty bottle cost Rs 13
+            ['SEAL-1500', '1.5 Liter Bottle', 25, 70], // empty bottle cost Rs 25
+            ['SEAL-6000', '6 Liter Bottle', 72, 150],  // empty bottle cost Rs 72
         ];
         $single = [];
         foreach ($singles as [$sku, $name, $cost, $sale]) {
@@ -69,11 +67,9 @@ class ProductSeeder extends Seeder
         //     Pack price = single price × qty with a small wholesale discount.
         // [sku, name, base_sku, qty]
         $packs = [
-            ['PACK-250-12', '250ml x 12 Pack', 'SEAL-250', 12],
             ['PACK-500-12', '500ml x 12 Pack', 'SEAL-500', 12],
             ['PACK-500-24', '500ml x 24 Pack', 'SEAL-500', 24],
-            ['PACK-1000-12', '1 Liter x 12 Pack', 'SEAL-1000', 12],
-            ['PACK-1500-6', '1.5 Liter x 6 Pack', 'SEAL-1500', 6],
+            ['PACK-1500-6', '1.5 Liter x 6 Pack (Pat)', 'SEAL-1500', 6],
             ['PACK-6000-6', '6 Liter x 6 Pack', 'SEAL-6000', 6],
         ];
         foreach ($packs as [$sku, $name, $baseSku, $qty]) {
@@ -130,7 +126,7 @@ class ProductSeeder extends Seeder
             'type' => ProductType::Consumable->value,
             'unit' => ProductUnit::Pcs->value,
             'water_litres' => 0,
-            'cost_price' => 700,
+            'cost_price' => 1250,   // empty 19L gallon bottle cost
             'sale_price' => 0,             // not sold — issued on refundable deposit
             'reorder_level' => 20,
             'track_inventory' => true,
@@ -140,9 +136,12 @@ class ProductSeeder extends Seeder
         // 3. Raw / consumable materials.
         $materials = [
             ['RAW-WATER', 'Raw Tap Water', 'raw', ProductType::Raw, ProductUnit::Litre, 0.05, 0],
-            ['BTL-500', 'Empty 500ml Bottle', 'bottle', ProductType::Consumable, ProductUnit::Pcs, 4, 0],
+            ['BTL-500', 'Empty 500ml Bottle', 'bottle', ProductType::Consumable, ProductUnit::Pcs, 13, 0],
+            ['BTL-1500', 'Empty 1.5L Bottle', 'bottle', ProductType::Consumable, ProductUnit::Pcs, 25, 0],
+            ['BTL-6000', 'Empty 6L Bottle', 'bottle', ProductType::Consumable, ProductUnit::Pcs, 72, 0],
             ['CAP-STD', 'Bottle Cap', 'cap', ProductType::Consumable, ProductUnit::Pcs, 0.8, 0],
-            ['LBL-STD', 'Product Label', 'label', ProductType::Consumable, ProductUnit::Pcs, 0.5, 0],
+            ['LBL-C1', 'Label - Color 1', 'label', ProductType::Consumable, ProductUnit::Pcs, 2, 0],
+            ['LBL-C2', 'Label - Color 2', 'label', ProductType::Consumable, ProductUnit::Pcs, 2, 0],
             ['CHEM-CL', 'Chlorine', 'chemical', ProductType::Consumable, ProductUnit::Kg, 120, 0],
             ['FLT-SED', 'Sediment Filter', 'filter', ProductType::Consumable, ProductUnit::Pcs, 350, 0],
             ['RO-MEM', 'RO Membrane', 'membrane', ProductType::Consumable, ProductUnit::Pcs, 4500, 0],

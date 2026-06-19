@@ -61,7 +61,11 @@ const adminNav = computed(() => [
                     <Link
                         :href="to(item.route)"
                         @click="onClose"
-                        class="group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition"
+                        class="
+                        
+                        
+                        
+                        group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition"
                         :class="isCurrent(item.route)
                             ? 'bg-brand text-white shadow-sm'
                             : (has(item.route) ? 'text-sidebar-foreground hover:bg-sidebar-accent' : 'text-sidebar-foreground/40 cursor-default')"
@@ -76,6 +80,7 @@ const adminNav = computed(() => [
             <template v-if="adminNav.some((i) => i.show)">
                 <p class="px-3 pt-6 pb-2 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Administration</p>
                 <ul class="space-y-1">
+                    
                     <li v-for="item in adminNav.filter((i) => i.show)" :key="item.label">
                         <Link
                             :href="to(item.route)"

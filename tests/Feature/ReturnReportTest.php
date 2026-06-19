@@ -12,7 +12,7 @@ class ReturnReportTest extends TestCase {
     foreach([RolePermissionSeeder::class,SettingSeeder::class,WarehouseSeeder::class,ProductSeeder::class,OpeningStockSeeder::class,ChartOfAccountsSeeder::class] as $s) $this->seed($s);
     $u=User::factory()->create(); $u->assignRole(RoleName::Admin->value); $this->actingAs($u);
     $wh=\App\Models\Warehouse::where('code','MAIN')->first()->id;
-    $p=Product::where('sku','SEAL-250')->first();
+    $p=Product::where('sku','SEAL-500')->first();
     $inv=app(SaleService::class)->create(['warehouse_id'=>$wh,'type'=>'pos','items'=>[['product_id'=>$p->id,'quantity'=>5,'unit_price'=>20]]]);
 
     // Before return: report counts it.

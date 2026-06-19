@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             // CustomerSeeder::class,
             SupplierSeeder::class,
             ChartOfAccountsSeeder::class,
+            ExpenseSetupSeeder::class,
         ]);
     }
 }

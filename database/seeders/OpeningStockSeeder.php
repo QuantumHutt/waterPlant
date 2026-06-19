@@ -22,9 +22,7 @@ class OpeningStockSeeder extends Seeder
 
         // Opening stock at SINGLE-bottle level (packs draw from these). Skip service/pack products.
         $opening = [
-            'SEAL-250' => 1000,
             'SEAL-500' => 1000,
-            'SEAL-1000' => 800,
             'SEAL-1500' => 600,
             'SEAL-6000' => 300,
             '19L-BOTTLE' => 100,   // company bottles available to issue on deposit

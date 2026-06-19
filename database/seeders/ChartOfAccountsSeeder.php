@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\Account;
-use App\Models\ExpenseCategory;
 use Illuminate\Database\Seeder;
 
 class ChartOfAccountsSeeder extends Seeder
@@ -39,17 +38,6 @@ class ChartOfAccountsSeeder extends Seeder
                 'name' => $name, 'type' => $type, 'sub_type' => $sub, 'is_active' => true,
             ]);
         }
-
-        // Expense categories mapped to their accounts.
-        $categories = [
-            ['Electricity', '5100'], ['Diesel', '5110'], ['Salaries', '5120'],
-            ['Maintenance', '5130'], ['Transport', '5140'], ['Misc Expenses', '5900'],
-        ];
-        foreach ($categories as [$name, $code]) {
-            ExpenseCategory::firstOrCreate(['name' => $name], [
-                'account_id' => Account::byCode($code)?->id,
-                'is_active' => true,
-            ]);
-        }
+        // Expense categories are seeded in ExpenseSetupSeeder (single source).
     }
 }

@@ -8,7 +8,7 @@ import TextInput from '@/Components/TextInput.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useCurrency } from '@/composables/useCurrency'
-import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode } from 'lucide-vue-next'
+import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode, FileText } from 'lucide-vue-next'
 
 const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, bottleDeposit: { type: Number, default: 1000 } })
 const { can, isSuperAdmin } = usePermissions()
@@ -41,8 +41,24 @@ function internalUseFree() {
 const receiptSize = ref(Number(localStorage.getItem('receipt_size')) || 80)
 watch(receiptSize, (v) => localStorage.setItem('receipt_size', v))
 
+// One-click thermal print via a hidden iframe (no popup, no blocker, no extra tab).
 function openReceipt(id) {
-    window.open(route('sales.receipt', id) + '?size=' + receiptSize.value, '_blank', 'width=420,height=640')
+    const url = route('sales.receipt', id) + '?size=' + receiptSize.value
+    let frame = document.getElementById('receipt-frame')
+    if (frame) frame.remove()
+    frame = document.createElement('iframe')
+    frame.id = 'receipt-frame'
+    Object.assign(frame.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' })
+    frame.onload = () => {
+        try { frame.contentWindow.focus(); frame.contentWindow.print() } catch (e) { /* blade auto-prints as fallback */ }
+    }
+    frame.src = url
+    document.body.appendChild(frame)
+}
+
+// Colorful A4 invoice (new tab → print / save as PDF).
+function openInvoice(id) {
+    window.open(route('sales.invoice', id), '_blank')
 }
 
 // Candela-style: as soon as a sale completes, pop the thermal receipt to print.
@@ -416,7 +432,8 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                             <td class="py-3 pr-4"><span class="rounded-full px-2 py-0.5 text-xs capitalize" :class="statusTone(inv.status)">{{ inv.status }}</span></td>
                             <td class="py-3 pr-0 text-right">
                                 <div class="flex items-center justify-end gap-1">
-                                    <button @click="openReceipt(inv.id)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Print receipt"><Printer class="size-4" /></button>
+                                    <button @click="openReceipt(inv.id)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Thermal receipt"><Printer class="size-4" /></button>
+                                    <button @click="openInvoice(inv.id)" class="rounded-full p-2 hover:bg-brand/10 text-brand" title="Colorful invoice (A4 / PDF)"><FileText class="size-4" /></button>
                                     <button v-if="inv.status !== 'returned' && can('sales.return')" @click="returnInvoice(inv)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Return"><RotateCcw class="size-4" /></button>
                                 </div>
                             </td>

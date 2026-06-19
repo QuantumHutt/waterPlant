@@ -19,14 +19,14 @@ class PosComprehensiveTest extends TestCase {
   private function pid($sku){ return Product::where('sku',$sku)->first()->id; }
 
   public function test_multi_item_cash_sale(){
-    $b250=$this->stock('SEAL-250'); $b500=$this->stock('SEAL-500');
+    $b1500=$this->stock('SEAL-1500'); $b500=$this->stock('SEAL-500');
     $r=$this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos','paid_total'=>110,
-      'items'=>[['product_id'=>$this->pid('SEAL-250'),'quantity'=>3,'unit_price'=>20],['product_id'=>$this->pid('SEAL-500'),'quantity'=>1,'unit_price'=>30]]]);
+      'items'=>[['product_id'=>$this->pid('SEAL-1500'),'quantity'=>3,'unit_price'=>20],['product_id'=>$this->pid('SEAL-500'),'quantity'=>1,'unit_price'=>30]]]);
     $r->assertSessionHasNoErrors();
     $inv=Invoice::latest('id')->first();
     $this->assertEqualsWithDelta(90.0,(float)$inv->grand_total,0.01);
     $this->assertEqualsWithDelta(0.0,(float)$inv->balance,0.01);
-    $this->assertSame($b250-3,$this->stock('SEAL-250'));
+    $this->assertSame($b1500-3,$this->stock('SEAL-1500'));
     $this->assertSame($b500-1,$this->stock('SEAL-500'));
   }
 
@@ -40,7 +40,7 @@ class PosComprehensiveTest extends TestCase {
 
   public function test_overpayment_caps_paid_no_negative_balance(){
     $this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos','paid_total'=>500,
-      'items'=>[['product_id'=>$this->pid('SEAL-250'),'quantity'=>1,'unit_price'=>20]]])->assertSessionHasNoErrors();
+      'items'=>[['product_id'=>$this->pid('SEAL-1500'),'quantity'=>1,'unit_price'=>20]]])->assertSessionHasNoErrors();
     $inv=Invoice::latest('id')->first();
     $this->assertEqualsWithDelta(20.0,(float)$inv->paid_total,0.01); // capped at grand
     $this->assertEqualsWithDelta(0.0,(float)$inv->balance,0.01);     // never negative
@@ -57,12 +57,12 @@ class PosComprehensiveTest extends TestCase {
   }
 
   public function test_oversell_rolls_back_whole_sale(){
-    $before250=$this->stock('SEAL-250');
+    $before1500=$this->stock('SEAL-1500');
     $r=$this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos',
-      'items'=>[['product_id'=>$this->pid('SEAL-250'),'quantity'=>2,'unit_price'=>20],['product_id'=>$this->pid('SEAL-6000'),'quantity'=>99999,'unit_price'=>150]]]);
+      'items'=>[['product_id'=>$this->pid('SEAL-1500'),'quantity'=>2,'unit_price'=>20],['product_id'=>$this->pid('SEAL-6000'),'quantity'=>99999,'unit_price'=>150]]]);
     $r->assertSessionHas('error');
     $this->assertSame(0,Invoice::count());                 // no invoice
-    $this->assertSame($before250,$this->stock('SEAL-250')); // first item NOT deducted (rollback)
+    $this->assertSame($before1500,$this->stock('SEAL-1500')); // first item NOT deducted (rollback)
   }
 
   public function test_wholesale_sale(){

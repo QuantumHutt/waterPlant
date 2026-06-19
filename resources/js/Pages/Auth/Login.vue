@@ -30,15 +30,8 @@ const submit = () => {
             <div class="relative hidden flex-col justify-between bg-sidebar p-10 text-white lg:flex">
                 <div class="absolute inset-0 bg-sidebar-gradient opacity-90"></div>
                 <div class="relative">
-                    <div class="flex items-center gap-3">
-                        <span class="flex size-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
-                            <Droplets class="size-6" />
-                        </span>
-                        <div>
-                            <p class="text-lg font-semibold leading-tight">BlueRoot</p>
-                            <p class="text-sm text-white/70">AL-Noor Water Plant &amp; Filter House</p>
-                        </div>
-                    </div>
+                    <img src="/images/blueroot-logo-white.png" alt="BlueRoot" class="h-12 w-auto" />
+                    <p class="mt-2 text-sm text-white/80">AL-Noor Water Plant &amp; Filter House</p>
                 </div>
                 <div class="relative space-y-4">
                     <h2 class="text-3xl font-semibold leading-tight">Run your water plant on one platform.</h2>
@@ -50,11 +43,8 @@ const submit = () => {
             <!-- Form panel -->
             <div class="bg-card p-8 sm:p-12">
                 <div class="mx-auto w-full max-w-sm">
-                    <div class="mb-8 flex items-center gap-3 lg:hidden">
-                        <span class="flex size-11 items-center justify-center rounded-2xl bg-sidebar-gradient text-white">
-                            <Droplets class="size-5" />
-                        </span>
-                        <p class="text-lg font-semibold">BlueRoot</p>
+                    <div class="mb-8 lg:hidden">
+                        <img src="/images/blueroot-logo.png" alt="BlueRoot" class="h-10 w-auto" />
                     </div>
 
                     <h1 class="text-2xl font-semibold tracking-tight">Welcome back</h1>

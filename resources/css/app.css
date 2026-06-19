@@ -45,15 +45,15 @@
      with the purple brand used for active items. */
   --sidebar: oklch(0.16 0.006 285);
   --sidebar-foreground: oklch(0.92 0 0);
-  --sidebar-primary: oklch(0.61 0.24 300);
+  --sidebar-primary: #012b94;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.24 0.01 285);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.27 0.01 285);
-  --sidebar-ring: oklch(0.61 0.24 300);
-  /* Default brand = purple */
-  --brand: oklch(0.61 0.24 300);
-  --brand-2: color-mix(in oklab, var(--brand) 85%, white 15%);
+  --sidebar-ring: #012b94;
+  /* Default brand = BlueRoot blue */
+  --brand: #012b94;
+  --brand-2: color-mix(in oklab, var(--brand) 78%, white 22%);
 }
 
 .dark {
@@ -96,7 +96,8 @@
 
 /* Brand presets — switch via document.documentElement.dataset.brand */
 [data-brand="purple"] { --brand: oklch(0.61 0.24 300); }
-[data-brand="blue"]   { --brand: oklch(0.65 0.17 240); }
+[data-brand="blue"]   { --brand: #012b94; }
+[data-brand="blueroot"] { --brand: #012b94; }
 [data-brand="teal"]   { --brand: oklch(0.7 0.12 180); }
 [data-brand="orange"] { --brand: oklch(0.73 0.19 60); }
 [data-brand="pink"]   { --brand: oklch(0.71 0.28 360); }

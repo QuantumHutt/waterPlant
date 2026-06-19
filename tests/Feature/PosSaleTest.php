@@ -14,7 +14,7 @@ class PosSaleTest extends TestCase {
   }
   private function wh(){ return \App\Models\Warehouse::where('code','MAIN')->first()->id; }
   public function test_pos_single_sale(){
-    $p=Product::where('sku','SEAL-250')->first();
+    $p=Product::where('sku','SEAL-500')->first();
     $r=$this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos','items'=>[['product_id'=>$p->id,'quantity'=>3,'unit_price'=>20]]]);
     $r->assertSessionHasNoErrors(); $r->assertRedirect();
     $this->assertSame(997.0,(float)StockItem::where('product_id',$p->id)->sum('quantity'));
@@ -33,7 +33,7 @@ class PosSaleTest extends TestCase {
   }
 
   public function test_paid_pos_sale_is_not_double_counted(){
-    $p=Product::where('sku','SEAL-250')->first();
+    $p=Product::where('sku','SEAL-500')->first();
     $this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos','items'=>[['product_id'=>$p->id,'quantity'=>12,'unit_price'=>20]]]);
     $inv=Invoice::latest('id')->first();
     $this->assertSame(240.0,(float)$inv->grand_total);

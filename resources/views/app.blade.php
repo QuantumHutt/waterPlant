@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-brand="purple">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-brand="blue">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <title inertia>{{ config('app.name', 'BlueRoot') }}</title>
 
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-        <link rel="mask-icon" href="/favicon.svg" color="#7c3aed">
+        <link rel="icon" type="image/png" href="/favicon.png">
+        <link rel="apple-touch-icon" href="/favicon.png">
 
         {{-- Apply theme + brand before paint to avoid flash --}}
         <script>
@@ -17,7 +17,7 @@
                     if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                         document.documentElement.classList.add('dark');
                     }
-                    var brand = localStorage.getItem('brand') || 'purple';
+                    var brand = localStorage.getItem('brand') || 'blue';
                     document.documentElement.setAttribute('data-brand', brand);
                 } catch (e) {}
             })();
