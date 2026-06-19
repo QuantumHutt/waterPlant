@@ -41,25 +41,22 @@ function internalUseFree() {
 const receiptSize = ref(Number(localStorage.getItem('receipt_size')) || 80)
 watch(receiptSize, (v) => localStorage.setItem('receipt_size', v))
 
-// One-click thermal print via a hidden iframe (no popup, no blocker, no extra tab).
-function openReceipt(id) {
-    const url = route('sales.receipt', id) + '?size=' + receiptSize.value
-    let frame = document.getElementById('receipt-frame')
+// One-click print via a hidden iframe (no popup, no blocker, no extra tab).
+function printFrame(url) {
+    let frame = document.getElementById('print-frame')
     if (frame) frame.remove()
     frame = document.createElement('iframe')
-    frame.id = 'receipt-frame'
+    frame.id = 'print-frame'
     Object.assign(frame.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' })
     frame.onload = () => {
-        try { frame.contentWindow.focus(); frame.contentWindow.print() } catch (e) { /* blade auto-prints as fallback */ }
+        try { frame.contentWindow.focus(); frame.contentWindow.print() } catch (e) { /* noop */ }
     }
     frame.src = url
     document.body.appendChild(frame)
 }
 
-// Colorful A4 invoice (new tab → print / save as PDF).
-function openInvoice(id) {
-    window.open(route('sales.invoice', id), '_blank')
-}
+function openReceipt(id) { printFrame(route('sales.receipt', id) + '?size=' + receiptSize.value) }
+function openInvoice(id) { printFrame(route('sales.invoice', id)) } // colorful A4, prints directly
 
 // Candela-style: as soon as a sale completes, pop the thermal receipt to print.
 watch(
