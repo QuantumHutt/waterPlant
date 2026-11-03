@@ -73,6 +73,27 @@ class ReportController extends Controller
                     ->select('customers.name', 'customer_gallon_balances.held_qty', 'customer_gallon_balances.deposit_held', 'customer_gallon_balances.missing_qty')
                     ->orderByDesc('customer_gallon_balances.held_qty')->limit(50)->get(),
             ],
+            // Purchases & suppliers (what you bought, what you paid, what you still owe).
+            'purchases' => [
+                'count' => (int) DB::table('purchase_orders')->whereBetween('order_date', [$from, $to])->where('status', 'received')->count(),
+                'total' => (float) DB::table('purchase_orders')->whereBetween('order_date', [$from, $to])->where('status', 'received')->sum('grand_total'),
+                'paid' => (float) DB::table('payments')->where('direction', 'out')
+                    ->where('payable_type', (new \App\Models\Supplier)->getMorphClass())
+                    ->whereBetween('paid_at', [$from, $to])->sum('amount'),
+                'supplier_outstanding' => (float) DB::table('suppliers')->where('current_balance', '>', 0)->sum('current_balance'),
+                'by_supplier' => DB::table('suppliers')->where('current_balance', '>', 0)
+                    ->orderByDesc('current_balance')->limit(20)->get(['name', 'current_balance']),
+            ],
+            // Udhaar actually collected in the period (cash that came in from old bills).
+            'udhaar_collected' => (float) DB::table('payments')->where('direction', 'in')
+                ->whereBetween('paid_at', [$from, $to])
+                ->where(fn ($q) => $q->where('payable_type', (new \App\Models\Customer)->getMorphClass())->where('reference', 'like', 'RCV-%')
+                    ->orWhere(fn ($q2) => $q2->where('payable_type', (new \App\Models\Invoice)->getMorphClass())
+                        ->where(fn ($q3) => $q3->where('reference', 'like', 'UDH-%')
+                            ->orWhereRaw('paid_at > (SELECT invoice_date FROM invoices WHERE invoices.id = payments.payable_id)'))))
+                ->sum('amount'),
+            // What customers owe right now (same figure as the dashboard udhaar list).
+            'customer_outstanding' => (float) DB::table('customers')->where('current_balance', '>', 0)->sum('current_balance'),
             'profitLoss' => $this->accounting->profitAndLoss($from, $to),
             'grossProfit' => $this->profit->byProduct($from, $to),
             'byBottle' => $this->profit->byBottle($from, $to),

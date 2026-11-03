@@ -157,6 +157,8 @@ class CashBookService extends BaseService
                 $p->payable_type === $customerType && str_starts_with($p->reference, 'ADV-') => 'advance',
                 $p->payable_type === $customerType && str_starts_with($p->reference, 'BDP-') => 'bottle_deposit',
                 $p->payable_type === $customerType => 'udhaar',
+                $p->payable_type === $invoiceType && str_starts_with($p->reference, 'UDH-') => 'udhaar',
+                // older data (before UDH- references): a payment after the invoice date was a collection
                 $p->payable_type === $invoiceType && $p->invoice_date && substr((string) $p->invoice_date, 0, 10) < substr((string) $p->paid_at, 0, 10) => 'udhaar',
                 default => 'sale',
             };

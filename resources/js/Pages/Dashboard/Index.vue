@@ -97,7 +97,9 @@ const cards = [
                 <p class="mb-2 text-sm font-semibold text-muted-foreground">{{ p.title }}</p>
                 <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
                     <StatCard label="Sales" :value="format(profit[p.key].revenue)" :hint="`${profit[p.key].invoices} bills`" :icon="ShoppingCart" tone="brand" />
-                    <StatCard label="Gross Profit" :value="format(profit[p.key].gross_profit)" :hint="`Sales − cost ${format(profit[p.key].cogs)}`" :icon="TrendingUp" tone="success" />
+                    <StatCard label="Gross Profit" :value="format(profit[p.key].gross_profit)"
+                        :hint="profit[p.key].pending_revenue > 0 ? `⚠ ${format(profit[p.key].pending_revenue)} sales have no cost set (refill) — set cost in Products` : `Sales − cost ${format(profit[p.key].cogs)}`"
+                        :icon="TrendingUp" :tone="profit[p.key].pending_revenue > 0 ? 'warning' : 'success'" />
                     <StatCard label="Expenses" :value="format(profit[p.key].expenses + profit[p.key].internal_use + profit[p.key].stock_loss)" :hint="profit[p.key].expenses_by_category?.[0] ? `Biggest: ${profit[p.key].expenses_by_category[0].category}` : 'No expenses'" :icon="Wallet" tone="destructive" />
                     <StatCard label="Net Profit (after expenses)" :value="format(profit[p.key].net_profit)" :hint="profit[p.key].margin !== null ? `${profit[p.key].margin}% of sales` : 'Gross profit − expenses'" :icon="PiggyBank" :tone="profit[p.key].net_profit >= 0 ? 'success' : 'destructive'" />
                 </div>

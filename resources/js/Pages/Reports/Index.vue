@@ -10,7 +10,7 @@ import ProfitBreakdown from '@/Components/Profit/ProfitBreakdown.vue'
 import BottleProfit from '@/Components/Profit/BottleProfit.vue'
 import { ShoppingCart, FlaskConical, Boxes, PiggyBank } from 'lucide-vue-next'
 
-const props = defineProps({ filters: Object, sales: Object, production: Object, inventory: Object, bottles: Object, profitLoss: Object, grossProfit: Object, byBottle: Array, pnl: Object, daily: Array, monthly: Array, topProducts: Array })
+const props = defineProps({ filters: Object, sales: Object, production: Object, inventory: Object, bottles: Object, profitLoss: Object, grossProfit: Object, byBottle: Array, purchases: Object, udhaar_collected: Number, customer_outstanding: Number, pnl: Object, daily: Array, monthly: Array, topProducts: Array })
 const { format } = useCurrency()
 
 const from = ref(props.filters.from)
@@ -54,6 +54,25 @@ function apply() { router.get(route('reports.index'), { from: from.value, to: to
         </div>
 
         <Card class="mt-4" title="Profit by Bottle (selected dates)"><BottleProfit :rows="byBottle" /></Card>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card title="Purchases &amp; Suppliers">
+                <div class="space-y-1.5 text-sm">
+                    <div class="flex justify-between"><span class="text-muted-foreground">Purchases received ({{ purchases.count }})</span><span class="font-medium">{{ format(purchases.total) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted-foreground">Paid to suppliers</span><span>{{ format(purchases.paid) }}</span></div>
+                    <div class="flex justify-between border-t border-border pt-1.5 font-semibold"><span>Still owed to suppliers (all time)</span><span class="text-warning">{{ format(purchases.supplier_outstanding) }}</span></div>
+                    <div v-for="s in purchases.by_supplier" :key="s.name" class="flex justify-between pl-3 text-xs text-muted-foreground"><span>{{ s.name }}</span><span>{{ format(s.current_balance) }}</span></div>
+                    <p class="pt-1 text-xs text-muted-foreground">Purchases are stock, not an expense — their cost is counted in profit when the goods sell.</p>
+                </div>
+            </Card>
+            <Card title="Udhaar (credit)">
+                <div class="space-y-1.5 text-sm">
+                    <div class="flex justify-between"><span class="text-muted-foreground">New udhaar given in period</span><span>{{ format(sales.outstanding) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted-foreground">Udhaar collected in period</span><span class="text-success">{{ format(udhaar_collected) }}</span></div>
+                    <div class="flex justify-between border-t border-border pt-1.5 font-semibold"><span>Customers still owe (all time)</span><span class="text-warning">{{ format(customer_outstanding) }}</span></div>
+                </div>
+            </Card>
+        </div>
 
         <Card class="mt-4" title="Monthly Profit (last 12 months)"><ProfitBreakdown :rows="monthly" label="Month" /></Card>
 

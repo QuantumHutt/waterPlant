@@ -112,7 +112,7 @@ class SaleService extends BaseService
             }
 
             if ($paid > 0) {
-                $this->recordPayment($invoice, $paid, $data['payment_method'] ?? 'cash');
+                $this->recordPayment($invoice, $paid, $data['payment_method'] ?? 'cash', null, atSale: true);
             }
 
             return $invoice->load('items');
@@ -276,14 +276,15 @@ class SaleService extends BaseService
      * Receive money against an invoice. Keeps all three in step: the invoice balance/status,
      * a Payment (cash/bank in) record, and the customer's udhaar ledger.
      */
-    public function recordPayment(Invoice $invoice, float $amount, string $method = 'cash', ?string $date = null): Payment
+    public function recordPayment(Invoice $invoice, float $amount, string $method = 'cash', ?string $date = null, bool $atSale = false): Payment
     {
-        return $this->transaction(function () use ($invoice, $amount, $method, $date): Payment {
+        return $this->transaction(function () use ($invoice, $amount, $method, $date, $atSale): Payment {
             // Never take more than the invoice still owes (extra is handled by CustomerService).
             $amount = round(min($amount, max(0.0, (float) $invoice->balance)), 2);
 
+            // RCV- = paid at the counter with the sale · UDH- = udhaar collected later.
             $payment = Payment::create([
-                'reference' => 'RCV-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+                'reference' => ($atSale ? 'RCV-' : 'UDH-').now()->format('ymd').'-'.strtoupper(Str::random(5)),
                 'payable_type' => $invoice->getMorphClass(),
                 'payable_id' => $invoice->getKey(),
                 'amount' => $amount,
