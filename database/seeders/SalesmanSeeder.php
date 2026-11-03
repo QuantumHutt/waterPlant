@@ -25,7 +25,7 @@ class SalesmanSeeder extends Seeder
     public function run(): void
     {
         $email = env('SALESMAN_EMAIL', 'umer@gmail.com');
-        $password = env('SALESMAN_PASSWORD','password');
+        $password = env('SALESMAN_PASSWORD','blueroot123');
         $user = User::withTrashed()->where('email', $email)->first();
 
         $generated = null;

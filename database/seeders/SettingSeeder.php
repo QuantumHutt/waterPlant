@@ -46,6 +46,10 @@ class SettingSeeder extends Seeder
                 'water_product_sku' => 'WATER-BULK', // bulk filtered-water product produced by batches
                 'shelf_life_days' => 180,            // auto expiry = production_date + this
             ],
+            'cash' => [
+                'opening_cash' => 0,   // drawer cash on the day the system started
+                'opening_bank' => 0,   // bank balance on the day the system started
+            ],
             'sales' => [
                 'water_product_sku' => 'WATER-BULK',  // bulk water stock that refills draw down
                 'refill_service_sku' => '19L-REFILL', // service product sold on a refill

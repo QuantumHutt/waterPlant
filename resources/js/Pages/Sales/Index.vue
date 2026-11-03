@@ -5,9 +5,10 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import Card from '@/Components/ui/Card.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useCurrency } from '@/composables/useCurrency'
-import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode, FileText, User, Store, Banknote, NotebookPen, ChevronDown, Droplets, Package } from 'lucide-vue-next'
+import Modal from '@/Components/Modal.vue'
+import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode, FileText, User, Store, Banknote, NotebookPen, ChevronDown, Droplets, Package, Wallet, XCircle } from 'lucide-vue-next'
 
-const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, coolerRefill: Object, todayCounts: { type: [Object, Array], default: () => ({}) }, bottleDeposit: { type: Number, default: 1000 } })
+const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, coolerRefill: Object, todayCounts: { type: [Object, Array], default: () => ({}) }, expenseCategories: { type: Array, default: () => [] }, bottleDeposit: { type: Number, default: 1000 } })
 const { can, isSuperAdmin } = usePermissions()
 const { format } = useCurrency()
 const page = usePage()
@@ -102,6 +103,19 @@ function receiveUdhaar() {
         preserveScroll: true,
         preserveState: true,
         onSuccess: () => collect.reset(),
+    })
+}
+
+// Advance: money taken ahead from a customer (shows as a negative balance) — used on the next bills.
+const advanceHeld = computed(() => (owes.value < 0 ? -owes.value : 0))
+const showAdvance = ref(false)
+const advanceForm = useForm({ amount: null, method: 'cash' })
+function receiveAdvance() {
+    if (!selectedCustomer.value || !(Number(advanceForm.amount) > 0)) return
+    advanceForm.post(route('customers.advance', selectedCustomer.value.id), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => { advanceForm.reset(); showAdvance.value = false },
     })
 }
 
@@ -240,19 +254,22 @@ function removeItem(i) { form.items.splice(i, 1) }
 const subtotal = computed(() => form.items.reduce((s, i) => s + lineNet(i), 0)) // after line discounts
 const grand = computed(() => Math.max(0, subtotal.value - (Number(form.discount) || 0)))
 const deposit = computed(() => (form.new_bottle ? Number(form.deposit) || 0 : 0))
-const collectable = computed(() => grand.value + deposit.value)
+// The customer's advance is used first (server does the same); only the rest is due now.
+const advanceUsed = computed(() => Math.min(advanceHeld.value, grand.value))
+const payable = computed(() => Math.max(0, grand.value - advanceUsed.value))
+const collectable = computed(() => payable.value + deposit.value)
 
 // Cash the customer actually handed over (blank = paying in full).
 const received = ref(null)
 const paidNow = computed(() => {
-    if (received.value === null || received.value === '') return collectable.value
-    return Math.min(Number(received.value) || 0, grand.value) // revenue paid (deposit handled separately)
+    if (received.value === null || received.value === '') return payable.value
+    return Math.min(Number(received.value) || 0, payable.value) // sale cash (deposit handled separately)
 })
 const change = computed(() => {
     if (received.value === null || received.value === '') return 0
     return Math.max(0, (Number(received.value) || 0) - collectable.value)
 })
-const dueAmount = computed(() => Math.max(0, grand.value - paidNow.value)) // udhaar / baqaya
+const dueAmount = computed(() => Math.max(0, payable.value - paidNow.value)) // udhaar / baqaya
 
 // ---- One-click helpers ----
 // Customer mode: walk-in → shop price · shop customer → market price.
@@ -297,12 +314,39 @@ function complete() {
     form.post(route('sales.store'), { preserveScroll: true, onSuccess: (pg) => { if (!pg.props.flash?.error) resetCart() } })
 }
 
-function returnInvoice(inv) {
-    if (confirm(`Return invoice ${inv.invoice_number}? Stock will be restored.`)) {
-        router.post(route('sales.return', inv.id), {}, { preserveScroll: true })
-    }
+// ---- Return (some or all items) / Cancel a wrong bill ----
+const retInv = ref(null)          // invoice in the modal
+const retMode = ref('return')     // return | cancel
+const retForm = useForm({ items: {}, refund_method: 'cash', reason: '' })
+function openReturn(inv, mode = 'return') {
+    retInv.value = inv
+    retMode.value = mode
+    retForm.reset()
+    retForm.clearErrors()
+    retForm.items = Object.fromEntries(inv.items.map((i) => [i.id, mode === 'cancel' ? left(i) : 0]))
 }
-const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-warning/15 text-warning', unpaid: 'bg-destructive/10 text-destructive', returned: 'bg-muted text-muted-foreground' }[s] ?? 'bg-muted')
+function left(i) { return Number(i.quantity) - Number(i.returned_qty ?? 0) }
+function returnAll() { retInv.value.items.forEach((i) => { retForm.items[i.id] = left(i) }) }
+const retValue = computed(() => {
+    if (!retInv.value) return 0
+    const inv = retInv.value
+    const lines = inv.items.reduce((s, i) => s + Number(i.line_total), 0)
+    const factor = lines > 0 ? Number(inv.grand_total) / lines : 0
+    return inv.items.reduce((s, i) => s + (Number(retForm.items[i.id]) || 0) * (Number(i.line_total) / Number(i.quantity)) * factor, 0)
+})
+const retFromUdhaar = computed(() => Math.min(retValue.value, Math.max(0, Number(retInv.value?.balance ?? 0))))
+function submitReturn() {
+    const url = retMode.value === 'cancel' ? route('sales.cancel', retInv.value.id) : route('sales.return', retInv.value.id)
+    retForm.post(url, { preserveScroll: true, onSuccess: (pg) => { if (!pg.props.flash?.error && !Object.keys(retForm.errors).length) retInv.value = null } })
+}
+
+// ---- Expense paid from the drawer (salesman too) ----
+const showExpense = ref(false)
+const expenseForm = useForm({ category_id: '', amount: null, paid_via: 'cash', note: '' })
+function submitExpense() {
+    expenseForm.post(route('expenses.store'), { preserveScroll: true, preserveState: true, onSuccess: () => { expenseForm.reset(); showExpense.value = false } })
+}
+const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-warning/15 text-warning', unpaid: 'bg-destructive/10 text-destructive', returned: 'bg-muted text-muted-foreground', cancelled: 'bg-destructive/10 text-destructive line-through' }[s] ?? 'bg-muted')
 </script>
 
 <template>
@@ -311,7 +355,11 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
         <template #header>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div><h2 class="text-2xl font-semibold tracking-tight">POS</h2><p class="text-sm text-muted-foreground">Tap a product → tap Cash. Done.</p></div>
-                <div class="flex items-center gap-3 text-sm">
+                <div class="flex flex-wrap items-center gap-3 text-sm">
+                    <button v-if="expenseCategories.length" type="button" @click="showExpense = !showExpense"
+                        class="flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1.5 font-semibold text-destructive hover:bg-destructive/20">
+                        <Wallet class="size-4" /> − Expense
+                    </button>
                     <label class="flex cursor-pointer items-center gap-2 rounded-full bg-card px-3 py-1.5 ring-1 ring-border">
                         <input type="checkbox" v-model="printerOn" class="rounded border-border text-brand focus:ring-brand" />
                         <Printer class="size-4" :class="printerOn ? 'text-brand' : 'text-muted-foreground'" />
@@ -331,6 +379,24 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                 {{ toast }}
             </div>
         </transition>
+
+        <!-- Expense paid from the drawer (tea, petrol, labour…) -->
+        <Card v-if="showExpense" class="mb-4">
+            <div class="flex flex-wrap items-end gap-2">
+                <div class="min-w-40 flex-1">
+                    <label class="block text-xs text-muted-foreground">Expense for</label>
+                    <select v-model="expenseForm.category_id" class="mt-1 w-full rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
+                        <option value="" disabled>Select…</option>
+                        <option v-for="c in expenseCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                    </select>
+                </div>
+                <div><label class="block text-xs text-muted-foreground">Amount (Rs)</label><input v-model.number="expenseForm.amount" type="number" min="1" class="mt-1 w-28 rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" /></div>
+                <div class="min-w-40 flex-1"><label class="block text-xs text-muted-foreground">Note</label><input v-model="expenseForm.note" placeholder="e.g. chai, petrol" class="mt-1 w-full rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" /></div>
+                <button type="button" @click="submitExpense" :disabled="expenseForm.processing || !expenseForm.category_id || !(expenseForm.amount > 0)"
+                    class="rounded-full bg-destructive px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">Save — from drawer</button>
+            </div>
+            <p v-if="Object.keys(expenseForm.errors).length" class="mt-2 text-xs text-destructive">{{ Object.values(expenseForm.errors)[0] }}</p>
+        </Card>
 
         <div v-if="can('sales.create')" class="grid grid-cols-1 gap-4 lg:grid-cols-5">
             <!-- LEFT: customer + products -->
@@ -376,10 +442,23 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                         </div>
                     </div>
                     <!-- Selected customer's udhaar: see it before selling, collect it in one tap -->
-                    <div v-if="selectedCustomer && owes !== 0" class="mt-2 rounded-xl p-3 ring-1" :class="owes > 0 ? 'bg-warning/10 ring-warning/30' : 'bg-success/10 ring-success/30'">
+                    <div v-if="selectedCustomer" class="mt-2 rounded-xl p-3 ring-1" :class="owes > 0 ? 'bg-warning/10 ring-warning/30' : (owes < 0 ? 'bg-success/10 ring-success/30' : 'bg-muted/40 ring-border')">
                         <div class="flex items-center justify-between text-sm">
-                            <span class="font-semibold">{{ owes > 0 ? 'Pehle ka udhaar' : 'Advance (paid extra)' }}</span>
-                            <span class="text-base font-bold" :class="owes > 0 ? 'text-warning' : 'text-success'">{{ format(Math.abs(owes)) }}</span>
+                            <span class="font-semibold">{{ owes > 0 ? 'Pehle ka udhaar' : (owes < 0 ? 'Advance jama hai' : 'Koi udhaar nahi') }}</span>
+                            <span v-if="owes !== 0" class="text-base font-bold" :class="owes > 0 ? 'text-warning' : 'text-success'">{{ format(Math.abs(owes)) }}</span>
+                            <button v-else-if="can('customers.collect')" type="button" @click="showAdvance = !showAdvance" class="rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">+ Advance</button>
+                        </div>
+                        <p v-if="owes < 0" class="mt-1 text-xs text-success">Next bill se khud minus hoga.
+                            <button v-if="can('customers.collect')" type="button" @click="showAdvance = !showAdvance" class="font-semibold underline">Add more</button>
+                        </p>
+                        <div v-if="showAdvance && owes <= 0" class="mt-2 flex flex-wrap items-center gap-1.5">
+                            <input v-model.number="advanceForm.amount" type="number" min="1" placeholder="Advance amount" class="w-28 rounded-full border-border bg-background px-3 py-1 text-xs focus:border-success focus:ring-success" />
+                            <select v-model="advanceForm.method" class="rounded-full border-border bg-background py-1 text-xs focus:border-success focus:ring-success">
+                                <option value="cash">Cash</option><option value="bank">Bank / Easypaisa</option>
+                            </select>
+                            <button type="button" @click="receiveAdvance" :disabled="advanceForm.processing || !(advanceForm.amount > 0)"
+                                class="ml-auto rounded-full bg-success px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40">Receive Advance</button>
+                            <p v-if="advanceForm.errors.amount" class="w-full text-xs text-destructive">{{ advanceForm.errors.amount }}</p>
                         </div>
                         <div v-if="owes > 0 && can('customers.collect')" class="mt-2 flex flex-wrap items-center gap-1.5">
                             <button type="button" @click="collect.amount = owes" class="rounded-full px-3 py-1 text-xs font-semibold" :class="collect.amount === owes ? 'bg-warning text-white' : 'bg-background ring-1 ring-border'">Full</button>
@@ -513,13 +592,14 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
 
                     <!-- Total -->
                     <div class="mt-4 rounded-2xl bg-brand/5 p-4 ring-1 ring-brand/20">
-                        <div v-if="form.discount > 0 || deposit > 0" class="mb-1 space-y-0.5 text-sm text-muted-foreground">
+                        <div v-if="form.discount > 0 || deposit > 0 || advanceUsed > 0" class="mb-1 space-y-0.5 text-sm text-muted-foreground">
                             <div class="flex justify-between"><span>Items</span><span>{{ format(subtotal) }}</span></div>
                             <div v-if="form.discount > 0" class="flex justify-between"><span>Discount</span><span>− {{ format(form.discount) }}</span></div>
+                            <div v-if="advanceUsed > 0" class="flex justify-between font-semibold text-success"><span>Advance used</span><span>− {{ format(advanceUsed) }}</span></div>
                             <div v-if="deposit > 0" class="flex justify-between"><span>Bottle deposit</span><span>+ {{ format(deposit) }}</span></div>
                         </div>
                         <div class="flex items-end justify-between">
-                            <span class="text-sm font-medium text-muted-foreground">Total</span>
+                            <span class="text-sm font-medium text-muted-foreground">{{ advanceUsed > 0 ? 'To pay now' : 'Total' }}</span>
                             <span class="text-3xl font-bold text-brand">{{ format(collectable) }}</span>
                         </div>
                         <!-- Change calculator: tap the note the customer gave -->
@@ -537,7 +617,7 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                     <button type="button" @click="payCash" :disabled="form.processing || !form.items.length"
                         class="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-success px-4 py-4 text-lg font-bold text-white shadow transition hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                         <Banknote class="size-6" />
-                        {{ dueAmount > 0 ? `Paid ${format(paidNow)} — Udhaar ${format(dueAmount)}` : `Cash ${format(collectable)}` }}
+                        {{ dueAmount > 0 ? `Paid ${format(paidNow)} — Udhaar ${format(dueAmount)}` : (collectable > 0 ? `Cash ${format(collectable)}` : 'Complete — paid from advance') }}
                     </button>
                     <button type="button" @click="payUdhaar" :disabled="form.processing || !form.items.length"
                         class="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-warning/15 px-4 py-2.5 text-sm font-semibold text-warning hover:bg-warning/25 disabled:opacity-40">
@@ -602,14 +682,15 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                             <td class="py-3 pr-4 font-mono text-xs">{{ inv.invoice_number }}</td>
                             <td class="py-3 pr-4">{{ inv.customer?.name ?? 'Walk-in' }}</td>
                             <td class="py-3 pr-4 capitalize">{{ inv.type === 'wholesale' ? 'Shop customer' : inv.type }}</td>
-                            <td class="py-3 pr-4 text-right font-medium">{{ format(inv.grand_total) }}</td>
+                            <td class="py-3 pr-4 text-right font-medium">{{ format(inv.grand_total) }}<span v-if="Number(inv.returned_total) > 0" class="block text-[11px] text-destructive">− {{ format(inv.returned_total) }} returned</span></td>
                             <td class="py-3 pr-4 text-right" :class="inv.balance > 0 ? 'text-warning' : ''">{{ format(inv.balance) }}</td>
                             <td class="py-3 pr-4"><span class="rounded-full px-2 py-0.5 text-xs capitalize" :class="statusTone(inv.status)">{{ inv.status }}</span></td>
                             <td class="py-3 pr-0 text-right">
                                 <div class="flex items-center justify-end gap-1">
                                     <button @click="openReceipt(inv.id)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Thermal receipt"><Printer class="size-4" /></button>
                                     <button @click="openInvoice(inv.id)" class="rounded-full p-2 hover:bg-brand/10 text-brand" title="Colorful invoice (A4 / PDF)"><FileText class="size-4" /></button>
-                                    <button v-if="inv.status !== 'returned' && can('sales.return')" @click="returnInvoice(inv)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Return"><RotateCcw class="size-4" /></button>
+                                    <button v-if="!['returned', 'cancelled'].includes(inv.status) && can('sales.return')" @click="openReturn(inv)" class="rounded-full p-2 hover:bg-muted text-muted-foreground" title="Return items"><RotateCcw class="size-4" /></button>
+                                    <button v-if="!['returned', 'cancelled'].includes(inv.status) && can('sales.delete')" @click="openReturn(inv, 'cancel')" class="rounded-full p-2 hover:bg-destructive/10 text-destructive" title="Cancel wrong bill"><XCircle class="size-4" /></button>
                                 </div>
                             </td>
                         </tr>
@@ -618,5 +699,43 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                 </table>
             </div>
         </Card>
+
+        <!-- Return items / Cancel bill -->
+        <Modal :show="!!retInv" @close="retInv = null">
+            <div v-if="retInv" class="space-y-3 p-6">
+                <h3 class="text-lg font-semibold">{{ retMode === 'cancel' ? 'Cancel bill' : 'Return items' }} — {{ retInv.invoice_number }}</h3>
+                <p v-if="retMode === 'cancel'" class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">Everything is reversed: stock back, money refunded / udhaar removed. Use for a wrong bill.</p>
+                <div class="space-y-2">
+                    <div v-for="i in retInv.items" :key="i.id" class="flex items-center justify-between gap-2 text-sm">
+                        <span class="flex-1">{{ i.product?.name }} <span class="text-xs text-muted-foreground">sold {{ Number(i.quantity) }}<template v-if="Number(i.returned_qty)"> · returned {{ Number(i.returned_qty) }}</template></span></span>
+                        <input v-model.number="retForm.items[i.id]" type="number" min="0" :max="left(i)" :disabled="retMode === 'cancel' || left(i) <= 0"
+                            class="w-20 rounded-md border-border bg-background text-right text-sm focus:border-brand focus:ring-brand disabled:opacity-50" />
+                    </div>
+                </div>
+                <button v-if="retMode === 'return'" type="button" @click="returnAll" class="text-xs font-semibold text-brand underline">Return everything</button>
+
+                <div class="rounded-xl bg-muted/50 p-3 text-sm">
+                    <div class="flex justify-between font-semibold"><span>Value coming back</span><span>{{ format(retValue) }}</span></div>
+                    <div v-if="retFromUdhaar > 0" class="flex justify-between text-warning"><span>Taken off udhaar</span><span>− {{ format(retFromUdhaar) }}</span></div>
+                    <div class="flex justify-between"><span>Refund to customer</span><span class="font-semibold">{{ format(retValue - retFromUdhaar) }}</span></div>
+                </div>
+                <div v-if="retValue - retFromUdhaar > 0" class="flex items-center justify-between text-sm">
+                    <span class="text-muted-foreground">Refund as</span>
+                    <select v-model="retForm.refund_method" class="rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
+                        <option value="cash">Cash from drawer</option><option value="bank">Bank</option>
+                        <option v-if="retInv.customer_id" value="advance">Keep as customer advance</option>
+                    </select>
+                </div>
+                <input v-model="retForm.reason" :placeholder="retMode === 'cancel' ? 'Reason (required) — e.g. wrong item entered' : 'Reason (optional)'" class="w-full rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" />
+                <p v-if="Object.keys(retForm.errors).length" class="text-xs text-destructive">{{ Object.values(retForm.errors)[0] }}</p>
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" @click="retInv = null" class="rounded-full px-4 py-2 text-sm">Close</button>
+                    <button type="button" @click="submitReturn" :disabled="retForm.processing || retValue <= 0 || (retMode === 'cancel' && !retForm.reason)"
+                        class="rounded-full px-5 py-2 text-sm font-semibold text-white disabled:opacity-40" :class="retMode === 'cancel' ? 'bg-destructive' : 'bg-brand'">
+                        {{ retMode === 'cancel' ? 'Cancel Bill' : 'Confirm Return' }}
+                    </button>
+                </div>
+            </div>
+        </Modal>
     </AppLayout>
 </template>

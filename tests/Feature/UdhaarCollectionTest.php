@@ -40,14 +40,26 @@ class UdhaarCollectionTest extends TestCase {
     $this->assertEquals(300,$this->outstanding());
   }
 
-  public function test_payment_on_opening_balance_and_overpayment(){
+  public function test_payment_on_opening_balance(){
     $c=$this->customer(1000);
-    $this->post(route('customers.payment',$c),['amount'=>400]);
+    $this->post(route('customers.payment',$c),['amount'=>400])->assertSessionHasNoErrors();
     $this->assertEquals(600,(float)$c->fresh()->current_balance);           // no invoice — on account
     $inv=$this->udhaar($c,200);
-    $this->post(route('customers.payment',$c),['amount'=>900]);             // 200 to invoice, 700 on account
+    $this->post(route('customers.payment',$c),['amount'=>800])->assertSessionHasNoErrors(); // exactly what is owed
     $this->assertSame('paid',$inv->fresh()->status);
-    $this->assertEquals(-100,(float)$c->fresh()->current_balance);          // 100 advance
+    $this->assertEquals(0,(float)$c->fresh()->current_balance);
+  }
+
+  public function test_cannot_receive_more_than_owed(){
+    $c=$this->customer(); $inv=$this->udhaar($c,200);
+    $this->post(route('customers.payment',$c),['amount'=>170])->assertSessionHasNoErrors();
+    $this->post(route('customers.payment',$c),['amount'=>31])->assertSessionHasErrors('amount'); // owes 30
+    $this->assertEquals(30,(float)$c->fresh()->current_balance);
+    $this->post(route('sales.payment',$inv),['amount'=>50])->assertSessionHasErrors('amount');  // invoice owes 30
+    $this->assertEquals(30,(float)$inv->fresh()->balance);
+    $this->post(route('customers.payment',$c),['amount'=>30])->assertSessionHasNoErrors();
+    $this->post(route('customers.payment',$c),['amount'=>1])->assertSessionHasErrors('amount');  // nothing owed
+    $this->assertEquals(0,(float)Payment::where('direction','in')->sum('amount') - 200);
   }
 
   public function test_partial_pos_sale_still_tracks_once(){

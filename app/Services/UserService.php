@@ -16,7 +16,7 @@ class UserService extends BaseService
     /** @param array<string,mixed> $filters */
     public function list(int $perPage = 15, array $filters = []): LengthAwarePaginator
     {
-        return $this->users->paginate($perPage, $filters, ['roles']);
+        return $this->users->paginate($perPage, $filters, ['roles', 'permissions']);
     }
 
     /** @param array<string,mixed> $data */
@@ -24,13 +24,15 @@ class UserService extends BaseService
     {
         return $this->transaction(function () use ($data): User {
             $roles = $data['roles'] ?? [];
-            unset($data['roles']);
+            $permissions = $data['permissions'] ?? [];
+            unset($data['roles'], $data['permissions']);
 
             $data['password'] = Hash::make($data['password']);
 
             /** @var User $user */
             $user = $this->users->create($data);
             $user->syncRoles($roles);
+            $user->syncPermissions($permissions);   // extra, on top of the role
 
             return $user->load('roles');
         });
@@ -47,12 +49,16 @@ class UserService extends BaseService
             }
 
             $roles = $data['roles'] ?? null;
-            unset($data['roles']);
+            $permissions = $data['permissions'] ?? null;
+            unset($data['roles'], $data['permissions']);
 
             $this->users->update($user, $data);
 
             if ($roles !== null) {
                 $user->syncRoles($roles);
+            }
+            if ($permissions !== null) {
+                $user->syncPermissions($permissions);   // extra, on top of the role
             }
 
             return $user->load('roles');

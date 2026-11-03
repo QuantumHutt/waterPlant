@@ -39,12 +39,12 @@ class ReportController extends Controller
             'filters' => ['from' => $from, 'to' => $to],
             'sales' => [
                 'count' => (clone $sales)->count(),
-                'total' => (float) (clone $sales)->sum('grand_total'),
+                'total' => (float) (clone $sales)->sum(DB::raw('grand_total - returned_total')), // net of partial returns
                 'received' => (float) (clone $sales)->sum('paid_total'),
                 'outstanding' => (float) (clone $sales)->sum('balance'),
                 'returns_count' => (clone $returns)->count(),
                 'returns_total' => (float) (clone $returns)->sum('total'),
-                'by_type' => (clone $sales)->select('type', DB::raw('COUNT(*) as count'), DB::raw('SUM(grand_total) as total'))
+                'by_type' => (clone $sales)->select('type', DB::raw('COUNT(*) as count'), DB::raw('SUM(grand_total - returned_total) as total'))
                     ->groupBy('type')->get(),
             ],
             'production' => [
@@ -87,7 +87,7 @@ class ReportController extends Controller
                 ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
                 ->whereBetween('invoices.invoice_date', [$from, $to])
                 ->whereNotIn('invoices.status', ['cancelled', 'returned'])
-                ->select('products.name', DB::raw('SUM(invoice_items.quantity) as qty'), DB::raw('SUM(invoice_items.line_total) as total'))
+                ->select('products.name', DB::raw('SUM(invoice_items.quantity - invoice_items.returned_qty) as qty'), DB::raw('SUM(invoice_items.line_total * (invoice_items.quantity - invoice_items.returned_qty) / NULLIF(invoice_items.quantity, 0)) as total'))
                 ->groupBy('products.id', 'products.name')->orderByDesc('total')->limit(10)->get(),
         ]);
     }

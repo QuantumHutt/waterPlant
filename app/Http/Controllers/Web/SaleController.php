@@ -42,8 +42,11 @@ class SaleController extends Controller
                 ->whereDate('invoices.invoice_date', now()->toDateString())
                 ->whereNotIn('invoices.status', ['cancelled', 'returned'])
                 ->groupBy('invoice_items.product_id')
-                ->selectRaw('invoice_items.product_id, SUM(invoice_items.quantity) as q')
+                ->selectRaw('invoice_items.product_id, SUM(invoice_items.quantity - invoice_items.returned_qty) as q')
                 ->pluck('q', 'product_id')->map(fn ($q) => (float) $q),
+            // Expense categories for the POS "− Expense" button (salesman pays from the drawer).
+            'expenseCategories' => $request->user()->can('expenses.create')
+                ? \App\Models\ExpenseCategory::where('is_active', true)->orderBy('name')->get(['id', 'name']) : [],
             'bottleDeposit' => (float) (\App\Models\Setting::get('sales', 'bottle_deposit') ?? 1000),
         ]);
     }
@@ -69,9 +72,12 @@ class SaleController extends Controller
         }
 
         $invoice = $this->service->create($data);
+        $advanceUsed = (float) \App\Models\Payment::where('payable_type', $invoice->getMorphClass())
+            ->where('payable_id', $invoice->id)->where('method', 'advance')->sum('amount');
 
         return back()
-            ->with('success', "✓ Sale complete — {$invoice->invoice_number} · ".\App\Support\Money::format((float) $invoice->grand_total))
+            ->with('success', "✓ Sale complete — {$invoice->invoice_number} · ".\App\Support\Money::format((float) $invoice->grand_total)
+                .($advanceUsed > 0 ? ' (advance used '.\App\Support\Money::format($advanceUsed).')' : ''))
             ->with('print_invoice_id', $invoice->id);
     }
 
@@ -88,8 +94,8 @@ class SaleController extends Controller
             ->selectRaw('product_id, SUM(quantity) as q')
             ->pluck('q', 'product_id');
 
-        // Cost is owner data (bill-at-cost / below-cost warning) — never sent to a cashier's browser.
-        $showCost = auth()->user()?->hasRole(\App\Support\Enums\RoleName::SuperAdmin->value) ?? false;
+        // Cost is owner data (below-cost warning / bill at cost) — only for users who may change prices.
+        $showCost = auth()->user()?->can('sales.discount') ?? false;
 
         return Product::where('is_active', true)
             ->where('is_service', false)
@@ -153,17 +159,40 @@ class SaleController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0', 'max:'.round(max(0.0, (float) $invoice->balance), 2)], // no overpayment
             'method' => ['nullable', 'in:cash,bank,cheque,card,credit'],
-        ]);
+        ], ['amount.max' => 'Is invoice ka baqaya sirf Rs :max hai — is se zyada nahi le sakte.']);
         $this->service->recordPayment($invoice, (float) $data['amount'], $data['method'] ?? 'cash');
 
         return back()->with('success', 'Payment recorded.');
     }
 
+    /** Return some or all items. items = {invoice_item_id: qty}; none given = whole bill. */
     public function returnInvoice(Request $request, Invoice $invoice): RedirectResponse
     {
         abort_unless($request->user()->can('sales.return'), 403);
-        $this->service->returnInvoice($invoice, $request->input('reason'));
+        $data = $request->validate([
+            'items' => ['nullable', 'array'],
+            'items.*' => ['numeric', 'min:0'],
+            'refund_method' => ['nullable', 'in:cash,bank,advance'],
+            'reason' => ['nullable', 'string', 'max:200'],
+        ]);
+        $method = $data['refund_method'] ?? 'cash';
+        $return = empty(array_filter($data['items'] ?? []))
+            ? $this->service->returnInvoice($invoice, $data['reason'] ?? null, $method)
+            : $this->service->returnItems($invoice, $data['items'], $method, $data['reason'] ?? null);
 
-        return back()->with('success', "Invoice {$invoice->invoice_number} returned.");
+        return back()->with('success', "✓ Returned ".\App\Support\Money::format((float) $return->total)." from {$invoice->invoice_number}");
+    }
+
+    /** Cancel a wrong bill — owner/manager only, reason required. */
+    public function cancel(Request $request, Invoice $invoice): RedirectResponse
+    {
+        abort_unless($request->user()->can('sales.delete'), 403);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:200'],
+            'refund_method' => ['nullable', 'in:cash,bank,advance'],
+        ]);
+        $this->service->cancel($invoice, $data['reason'], $data['refund_method'] ?? 'cash');
+
+        return back()->with('success', "✓ Invoice {$invoice->invoice_number} cancelled — stock and money reversed.");
     }
 }

@@ -85,6 +85,8 @@ class PurchaseService extends BaseService
                 ]);
             }
 
+            $this->updateCosts($po);
+
             $supplier = Supplier::find($po->supplier_id);
             $this->ledger->post($supplier, (float) $po->grand_total, 0, $po, "Purchase {$po->po_number}");
 
@@ -92,6 +94,24 @@ class PurchaseService extends BaseService
 
             return $po;
         });
+    }
+
+    /**
+     * New purchase price becomes the product cost (used for profit on sales from now on).
+     * Packs built from that bottle follow: pack cost = bottle cost × pack size.
+     * Past sales keep the cost they were sold at.
+     */
+    private function updateCosts(PurchaseOrder $po): void
+    {
+        foreach ($po->items as $item) {
+            $cost = (float) $item->unit_cost;
+            if ($cost <= 0) {
+                continue;
+            }
+            \App\Models\Product::whereKey($item->product_id)->first()?->update(['cost_price' => $cost]);
+            \App\Models\Product::where('pack_of_product_id', $item->product_id)->get()
+                ->each(fn ($pack) => $pack->update(['cost_price' => round($cost * max(1, (int) $pack->pack_size), 2)]));
+        }
     }
 
     public function payInvoice(Supplier $supplier, float $amount, ?string $note = null): void

@@ -81,7 +81,7 @@ function submitPay() { payForm.post(route('customers.payment', payModal.value.id
                             <td class="py-3 pr-0">
                                 <div class="flex items-center justify-end gap-1">
                                     <Link :href="route('customers.ledger', c.id)" class="rounded-full p-2 hover:bg-muted" title="Ledger"><BookText class="size-4" /></Link>
-                                    <button v-if="can('customers.collect')" @click="openPay(c)" class="rounded-full p-2 hover:bg-success/10 text-success" title="Record payment"><Wallet class="size-4" /></button>
+                                    <button v-if="can('customers.collect') && c.current_balance > 0" @click="openPay(c)" class="rounded-full p-2 hover:bg-success/10 text-success" title="Record payment"><Wallet class="size-4" /></button>
                                     <button v-if="can('customers.update')" @click="openEdit(c)" class="rounded-full p-2 hover:bg-muted" title="Edit"><Pencil class="size-4" /></button>
                                 </div>
                             </td>

@@ -52,9 +52,15 @@ class SupplierController extends Controller
     public function payment(Request $request, Supplier $supplier): RedirectResponse
     {
         abort_unless($request->user()->can('suppliers.update'), 403);
-        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0'], 'note' => ['nullable', 'string', 'max:255']]);
-        $this->service->recordPayment($supplier, (float) $data['amount'], $data['note'] ?? null);
+        // Never pay more than we owe this supplier.
+        $owed = round(max(0.0, (float) $supplier->current_balance), 2);
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0', 'max:'.$owed],
+            'method' => ['nullable', 'in:cash,bank,cheque'],
+            'note' => ['nullable', 'string', 'max:255'],
+        ], ['amount.max' => 'Supplier ka baqaya sirf Rs :max hai — is se zyada nahi de sakte.']);
+        $this->service->recordPayment($supplier, (float) $data['amount'], $data['note'] ?? null, $data['method'] ?? 'cash');
 
-        return back()->with('success', 'Payment recorded.');
+        return back()->with('success', '✓ Paid '.\App\Support\Money::format((float) $data['amount'])." to {$supplier->name}");
     }
 }

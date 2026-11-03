@@ -53,7 +53,7 @@ class ConfirmedPricingTest extends TestCase {
   public function test_catalog_only_lists_products_the_shop_sells(){
     foreach(ProductSeeder::RETIRED as $sku) $this->assertFalse((bool)Product::where('sku',$sku)->value('is_active') ,$sku);
     $active=Product::where('is_active',true)->pluck('sku')->sort()->values()->all();
-    $this->assertEquals(['19L-BOTTLE','19L-NEW','19L-REFILL','COOLER-REFILL','PACK-1500-6','PACK-500-12','SEAL-1500','SEAL-500','SEAL-6000','WATER-BULK'],$active);
+    $this->assertEquals(['19L-BOTTLE','19L-NEW','19L-REFILL','BTL-1500','BTL-500','BTL-6000','CAP-STD','COOLER-REFILL','PACK-1500-6','PACK-500-12','SEAL-1500','SEAL-500','SEAL-6000','WATER-BULK'],$active);
   }
 
   public function test_6l_shop_and_market_gross_profit(){

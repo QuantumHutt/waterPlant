@@ -33,6 +33,7 @@ final class Permissions
         'delivery' => ['view', 'create', 'update', 'delete', 'confirm'],
         'accounting' => ['view', 'create', 'update', 'delete', 'post'],
         'expenses' => ['view', 'create', 'update', 'delete'],
+        'cash' => ['view', 'transfer', 'close'],   // cash book · bank deposit · day closing
         'employees' => ['view', 'create', 'update', 'delete'],
         'payroll' => ['view', 'process'],
         'quality' => ['view', 'create', 'update', 'delete'],
@@ -89,14 +90,14 @@ final class Permissions
                 self::forGroups([
                     'products', 'inventory', 'consumption', 'production', 'gallons',
                     'customers', 'suppliers', 'purchases', 'sales', 'delivery',
-                    'employees', 'quality',
+                    'employees', 'quality', 'cash',
                 ]),
                 self::viewOnly(['accounting', 'expenses', 'payroll']),
                 ['reports.view', 'notifications.view'],
             ),
 
             RoleName::Accountant->value => array_merge(
-                self::forGroups(['accounting', 'expenses', 'suppliers', 'purchases', 'payroll']),
+                self::forGroups(['accounting', 'expenses', 'suppliers', 'purchases', 'payroll', 'cash']),
                 self::viewOnly(['products', 'inventory', 'customers', 'sales', 'employees']),
                 ['settings.view', 'settings.update', 'reports.view', 'audit.view', 'notifications.view'],
             ),
@@ -108,7 +109,7 @@ final class Permissions
             ),
 
             RoleName::SalesManager->value => array_merge(
-                self::forGroups(['sales', 'customers', 'gallons']),
+                self::forGroups(['sales', 'customers', 'gallons', 'cash']),
                 self::viewOnly(['products', 'inventory', 'delivery']),
                 ['reports.view', 'notifications.view'],
             ),
@@ -119,10 +120,12 @@ final class Permissions
                 ['notifications.view'],
             ),
 
-            // POS only: sell at list price, add walk-in / shop customers, receive udhaar.
-            // No price changes, discounts, returns, reports or dashboard.
+            // POS only: sell at list price, add walk-in / shop customers, receive udhaar,
+            // pay small expenses from the drawer, count & close the drawer.
+            // No price changes, discounts, returns, bank deposits, reports or dashboard.
             RoleName::Salesman->value => [
                 'sales.view', 'sales.create', 'customers.view', 'customers.create', 'customers.collect',
+                'expenses.create', 'cash.view', 'cash.close',
                 'products.view', 'notifications.view',
             ],
         ];

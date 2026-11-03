@@ -20,7 +20,10 @@ const showModal = ref(false)
 const form = useForm({
     supplier_id: '', warehouse_id: '', order_date: new Date().toISOString().slice(0, 10),
     discount: 0, tax_total: 0, note: '', items: [{ product_id: '', quantity: 1, unit_cost: 0 }],
+    // One step: goods arrived now + paid now (blank = pay later, stays on supplier balance).
+    receive_now: true, paid_amount: null, paid_method: 'cash',
 })
+function costOf(id) { return Number(props.products.find((p) => p.id === id)?.cost_price ?? 0) }
 function open() {
     form.reset()
     form.supplier_id = props.suppliers[0]?.id ?? ''
@@ -28,7 +31,7 @@ function open() {
     form.items = [{ product_id: props.products[0]?.id ?? '', quantity: 1, unit_cost: props.products[0]?.cost_price ?? 0 }]
     showModal.value = true
 }
-function addItem() { form.items.push({ product_id: props.products[0]?.id ?? '', quantity: 1, unit_cost: 0 }) }
+function addItem() { const id = props.products[0]?.id ?? ''; form.items.push({ product_id: id, quantity: 1, unit_cost: costOf(id) }) }
 const subtotal = computed(() => form.items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unit_cost) || 0), 0))
 const grand = computed(() => subtotal.value - (Number(form.discount) || 0) + (Number(form.tax_total) || 0))
 function submit() { form.post(route('purchases.store'), { onSuccess: () => (showModal.value = false), preserveScroll: true }) }
@@ -42,7 +45,7 @@ const statusTone = (s) => ({ draft: 'bg-warning/15 text-warning', received: 'bg-
     <AppLayout>
         <template #header>
             <div class="flex items-center justify-between gap-4">
-                <div><h2 class="text-2xl font-semibold tracking-tight">Purchase Orders</h2><p class="text-sm text-muted-foreground">Order &amp; receive raw materials.</p></div>
+                <div><h2 class="text-2xl font-semibold tracking-tight">Purchase Orders</h2><p class="text-sm text-muted-foreground">Buy empty bottles, caps, 19L bottles &amp; stock. Received goods update stock and cost.</p></div>
                 <PrimaryButton v-if="can('purchases.create')" @click="open" class="!rounded-full"><Plus class="size-4 mr-1" /> New PO</PrimaryButton>
             </div>
         </template>
@@ -83,7 +86,7 @@ const statusTone = (s) => ({ draft: 'bg-warning/15 text-warning', received: 'bg-
 
                 <div class="rounded-2xl bg-muted/50 p-4 space-y-2">
                     <div v-for="(it, i) in form.items" :key="i" class="grid grid-cols-12 gap-2 items-center">
-                        <select v-model="it.product_id" class="col-span-6 rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand"><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option></select>
+                        <select v-model="it.product_id" @change="it.unit_cost = costOf(it.product_id)" class="col-span-6 rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand"><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option></select>
                         <TextInput v-model.number="it.quantity" type="number" step="0.001" placeholder="qty" class="col-span-2 text-sm" />
                         <TextInput v-model.number="it.unit_cost" type="number" step="0.0001" placeholder="cost" class="col-span-3 text-sm" />
                         <button type="button" @click="form.items.splice(i, 1)" class="col-span-1 text-destructive"><X class="size-4" /></button>
@@ -97,7 +100,23 @@ const statusTone = (s) => ({ draft: 'bg-warning/15 text-warning', received: 'bg-
                     <div class="flex items-end justify-end"><div class="text-right"><p class="text-xs text-muted-foreground">Grand Total</p><p class="text-lg font-semibold">{{ format(grand) }}</p></div></div>
                 </div>
 
-                <div class="flex justify-end gap-3 pt-2"><SecondaryButton type="button" @click="showModal = false">Cancel</SecondaryButton><PrimaryButton :disabled="form.processing">Create PO</PrimaryButton></div>
+                <div class="space-y-2 rounded-xl bg-muted/40 p-3 text-sm">
+                    <label v-if="can('purchases.receive')" class="flex items-center gap-2 font-medium">
+                        <input type="checkbox" v-model="form.receive_now" class="rounded border-border text-brand focus:ring-brand" />
+                        Goods received now (add to stock + update cost)
+                    </label>
+                    <div v-if="form.receive_now" class="flex flex-wrap items-center gap-2">
+                        <span class="text-muted-foreground">Paid now</span>
+                        <button type="button" @click="form.paid_amount = grand" class="rounded-full bg-background px-3 py-1 text-xs font-semibold ring-1 ring-border">Full {{ format(grand) }}</button>
+                        <input v-model.number="form.paid_amount" type="number" min="0" :max="grand" placeholder="0 = pay later" class="w-32 rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" />
+                        <select v-model="form.paid_method" class="rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
+                            <option value="cash">From cash drawer</option><option value="bank">From bank</option><option value="cheque">Cheque</option>
+                        </select>
+                    </div>
+                    <p v-if="form.receive_now && (form.paid_amount || 0) < grand" class="text-xs text-warning">{{ format(grand - (form.paid_amount || 0)) }} will stay as supplier balance (pay later from Suppliers).</p>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2"><SecondaryButton type="button" @click="showModal = false">Cancel</SecondaryButton><PrimaryButton :disabled="form.processing">{{ form.receive_now ? 'Save & Receive' : 'Create PO' }}</PrimaryButton></div>
             </form>
         </Modal>
     </AppLayout>

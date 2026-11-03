@@ -1,9 +1,10 @@
 <script setup>
 import { Head, useForm, router } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import Card from '@/Components/ui/Card.vue'
 import Modal from '@/Components/Modal.vue'
+import PermissionPicker from '@/Components/Access/PermissionPicker.vue'
 import InputLabel from '@/Components/InputLabel.vue'
 import TextInput from '@/Components/TextInput.vue'
 import InputError from '@/Components/InputError.vue'
@@ -17,6 +18,8 @@ const props = defineProps({
     users: { type: Object, required: true },
     filters: { type: Object, default: () => ({}) },
     roles: { type: Array, default: () => [] },
+    permissionGroups: { type: Object, default: () => ({}) },
+    rolePermissions: { type: Object, default: () => ({}) },
 })
 
 const { can } = usePermissions()
@@ -35,8 +38,10 @@ const editing = ref(null)
 
 const form = useForm({
     name: '', email: '', password: '', password_confirmation: '',
-    phone: '', is_active: true, roles: [],
+    phone: '', is_active: true, roles: [], permissions: [],
 })
+// Permissions the selected role(s) already give — extras are ticked on top.
+const fromRoles = computed(() => [...new Set(form.roles.flatMap((r) => props.rolePermissions[r] ?? []))])
 
 function openCreate() {
     editing.value = null
@@ -53,6 +58,7 @@ function openEdit(user) {
     form.phone = user.phone ?? ''
     form.is_active = user.is_active
     form.roles = [...(user.roles ?? [])]
+    form.permissions = [...(user.direct_permissions ?? [])]
     showModal.value = true
 }
 
@@ -189,6 +195,14 @@ function destroy() {
                         </label>
                     </div>
                     <InputError :message="form.errors.roles" class="mt-1" />
+                </div>
+
+                <div>
+                    <InputLabel value="Extra permissions (on top of the role)" />
+                    <p class="mb-2 text-xs text-muted-foreground">Ticked + faded = already given by the role. Tick more to give this user extra access.</p>
+                    <div class="max-h-80 overflow-y-auto pr-1">
+                        <PermissionPicker :groups="permissionGroups" v-model="form.permissions" :locked="fromRoles" />
+                    </div>
                 </div>
 
                 <label class="flex items-center gap-2 text-sm">

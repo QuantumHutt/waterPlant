@@ -63,6 +63,29 @@ class CustomerService extends BaseService
 
     /** Record a payment received from the customer (reduces receivable). */
     /**
+     * Money taken in advance (customer has no udhaar, or pays ahead on purpose). Recorded as cash
+     * in today and credited to the customer, so their balance goes negative = advance held.
+     * It is used up automatically on their next bills.
+     */
+    public function receiveAdvance(Customer $customer, float $amount, string $method = 'cash', ?string $note = null): void
+    {
+        $this->transaction(function () use ($customer, $amount, $method, $note): void {
+            Payment::create([
+                'reference' => 'ADV-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+                'payable_type' => $customer->getMorphClass(),
+                'payable_id' => $customer->getKey(),
+                'amount' => round($amount, 2),
+                'method' => $method,
+                'direction' => 'in',
+                'paid_at' => now()->toDateString(),
+                'note' => $note ?? 'Advance received',
+                'created_by' => auth()->id(),
+            ]);
+            $this->ledger->post($customer->fresh(), 0, round($amount, 2), null, $note ?? 'Advance received');
+        });
+    }
+
+    /**
      * Udhaar collected from a customer. Settles their unpaid invoices oldest-first (each invoice's
      * balance, status, payment record and ledger move together); anything left over — e.g. an
      * opening balance with no invoice — is credited to their account.

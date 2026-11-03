@@ -29,7 +29,7 @@ function openEdit(s) { editing.value = s; form.reset(); Object.assign(form, { co
 function submit() { const o = { onSuccess: () => (showModal.value = false), preserveScroll: true }; editing.value ? form.put(route('suppliers.update', editing.value.id), o) : form.post(route('suppliers.store'), o) }
 
 const payModal = ref(null)
-const payForm = useForm({ amount: null, note: '' })
+const payForm = useForm({ amount: null, method: 'cash', note: '' })
 function openPay(s) { payModal.value = s; payForm.reset() }
 function submitPay() { payForm.post(route('suppliers.payment', payModal.value.id), { onSuccess: () => (payModal.value = null), preserveScroll: true }) }
 </script>
@@ -88,7 +88,13 @@ function submitPay() { payForm.post(route('suppliers.payment', payModal.value.id
         <Modal :show="!!payModal" @close="payModal = null">
             <form @submit.prevent="submitPay" class="p-6 space-y-4">
                 <h3 class="text-lg font-semibold">Pay Supplier — {{ payModal?.name }}</h3>
-                <div><InputLabel value="Amount" /><TextInput v-model.number="payForm.amount" type="number" step="0.01" class="mt-1 block w-full" required /></div>
+                <p class="text-sm text-muted-foreground">We owe {{ format(payModal?.current_balance ?? 0) }}</p>
+                <div><InputLabel value="Amount" /><TextInput v-model.number="payForm.amount" type="number" step="0.01" min="0.01" :max="payModal?.current_balance" class="mt-1 block w-full" required /><p v-if="payForm.errors.amount" class="mt-1 text-xs text-destructive">{{ payForm.errors.amount }}</p></div>
+                <div><InputLabel value="Paid from" />
+                    <select v-model="payForm.method" class="mt-1 block w-full rounded-md border-border bg-background focus:border-brand focus:ring-brand">
+                        <option value="cash">Cash drawer</option><option value="bank">Bank</option><option value="cheque">Cheque</option>
+                    </select>
+                </div>
                 <div><InputLabel value="Note" /><TextInput v-model="payForm.note" class="mt-1 block w-full" /></div>
                 <div class="flex justify-end gap-3 pt-2"><SecondaryButton type="button" @click="payModal = null">Cancel</SecondaryButton><PrimaryButton :disabled="payForm.processing">Save</PrimaryButton></div>
             </form>

@@ -92,9 +92,15 @@ const cards = [
 
         <!-- Profit: today + this month (sales − cost − expenses) -->
         <template v-if="profit">
-            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <StatCard label="Today's Profit" :value="format(profit.today.net_profit)" :hint="`Sales ${format(profit.today.revenue)} · Expenses ${format(profit.today.expenses)}`" :icon="TrendingUp" :tone="profit.today.net_profit >= 0 ? 'success' : 'destructive'" />
-                <StatCard label="This Month's Profit" :value="format(profit.month.net_profit)" :hint="`Sales ${format(profit.month.revenue)} · Expenses ${format(profit.month.expenses)}`" :icon="PiggyBank" :tone="profit.month.net_profit >= 0 ? 'success' : 'destructive'" />
+            <!-- Sales → Gross profit → Expenses → Net profit, for today and this month -->
+            <div v-for="p in [{ key: 'today', title: 'Today' }, { key: 'month', title: 'This Month' }]" :key="p.key" class="mt-4">
+                <p class="mb-2 text-sm font-semibold text-muted-foreground">{{ p.title }}</p>
+                <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+                    <StatCard label="Sales" :value="format(profit[p.key].revenue)" :hint="`${profit[p.key].invoices} bills`" :icon="ShoppingCart" tone="brand" />
+                    <StatCard label="Gross Profit" :value="format(profit[p.key].gross_profit)" :hint="`Sales − cost ${format(profit[p.key].cogs)}`" :icon="TrendingUp" tone="success" />
+                    <StatCard label="Expenses" :value="format(profit[p.key].expenses + profit[p.key].internal_use + profit[p.key].stock_loss)" :hint="profit[p.key].expenses_by_category?.[0] ? `Biggest: ${profit[p.key].expenses_by_category[0].category}` : 'No expenses'" :icon="Wallet" tone="destructive" />
+                    <StatCard label="Net Profit (after expenses)" :value="format(profit[p.key].net_profit)" :hint="profit[p.key].margin !== null ? `${profit[p.key].margin}% of sales` : 'Gross profit − expenses'" :icon="PiggyBank" :tone="profit[p.key].net_profit >= 0 ? 'success' : 'destructive'" />
+                </div>
             </div>
             <Card class="mt-4">
                 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">

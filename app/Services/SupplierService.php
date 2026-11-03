@@ -50,9 +50,22 @@ class SupplierService extends BaseService
         return (bool) $supplier->delete();
     }
 
-    /** Record a payment made to the supplier (reduces payable). */
-    public function recordPayment(Supplier $supplier, float $amount, ?string $note = null): void
+    /** Pay a supplier: money out of the drawer / bank (cash book) + reduces what we owe them. */
+    public function recordPayment(Supplier $supplier, float $amount, ?string $note = null, string $method = 'cash'): void
     {
-        $this->ledger->post($supplier, 0, $amount, null, $note ?? 'Payment made');
+        $this->transaction(function () use ($supplier, $amount, $note, $method): void {
+            \App\Models\Payment::create([
+                'reference' => 'PAY-'.now()->format('ymd').'-'.strtoupper(\Illuminate\Support\Str::random(5)),
+                'payable_type' => $supplier->getMorphClass(),
+                'payable_id' => $supplier->getKey(),
+                'amount' => round($amount, 2),
+                'method' => $method,
+                'direction' => 'out',
+                'paid_at' => now()->toDateString(),
+                'note' => $note,
+                'created_by' => auth()->id(),
+            ]);
+            $this->ledger->post($supplier, 0, round($amount, 2), null, $note ?? 'Payment made');
+        });
     }
 }

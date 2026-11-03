@@ -25,7 +25,7 @@ class SaleService extends BaseService
 
     public function list(int $perPage = 15, array $filters = []): LengthAwarePaginator
     {
-        return Invoice::with('customer')
+        return Invoice::with(['customer', 'items.product:id,name'])
             ->when(! empty($filters['status']), fn ($q) => $q->where('status', $filters['status']))
             ->when(! empty($filters['type']), fn ($q) => $q->where('type', $filters['type']))
             ->latest()->paginate($perPage)->withQueryString();
@@ -98,8 +98,17 @@ class SaleService extends BaseService
 
             if ($invoice->customer_id) {
                 $customer = Customer::find($invoice->customer_id);
+                // Advance the customer paid earlier (negative balance) is used on this bill first;
+                // only the rest is due in cash.
+                $used = round(min(max(0.0, -(float) $customer->current_balance), $grand), 2);
+                $paid = min($paid, round($grand - $used, 2));
+
                 // Receivable created for the full invoice; recordPayment() below credits what was paid.
                 $this->ledger->post($customer, $grand, 0, $invoice, "Invoice {$invoice->invoice_number}");
+
+                if ($used > 0) {
+                    $this->applyAdvance($invoice, $used);
+                }
             }
 
             if ($paid > 0) {
@@ -287,62 +296,214 @@ class SaleService extends BaseService
         });
     }
 
-    /** Return a whole invoice: restock items, credit the customer, mark returned. */
-    public function returnInvoice(Invoice $invoice, ?string $reason = null): SalesReturn
+    /**
+     * Settle part of an invoice from the customer's advance. The cash was already counted (and
+     * the ledger credited) when the advance was received, so this only records method "advance"
+     * on the invoice — no new cash, no new ledger credit.
+     */
+    private function applyAdvance(Invoice $invoice, float $amount): void
     {
-        return $this->transaction(function () use ($invoice, $reason): SalesReturn {
+        Payment::create([
+            'reference' => 'ADV-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+            'payable_type' => $invoice->getMorphClass(),
+            'payable_id' => $invoice->getKey(),
+            'amount' => $amount,
+            'method' => 'advance',
+            'direction' => 'in',
+            'paid_at' => now()->toDateString(),
+            'note' => 'Paid from customer advance',
+            'created_by' => auth()->id(),
+        ]);
+
+        $paid = round((float) $invoice->paid_total + $amount, 2);
+        $invoice->update([
+            'paid_total' => $paid,
+            'balance' => round((float) $invoice->grand_total - $paid, 2),
+            'status' => $this->status((float) $invoice->grand_total, $paid),
+        ]);
+    }
+
+    /** Return a whole invoice (everything not returned yet). */
+    public function returnInvoice(Invoice $invoice, ?string $reason = null, string $refundMethod = 'cash'): SalesReturn
+    {
+        return $this->returnItems($invoice, $this->allRemaining($invoice), $refundMethod, $reason);
+    }
+
+    /** Cancel a wrong bill (owner/manager): full reversal of stock and money, marked "cancelled". */
+    public function cancel(Invoice $invoice, string $reason, string $refundMethod = 'cash'): SalesReturn
+    {
+        return $this->returnItems($invoice, $this->allRemaining($invoice), $refundMethod, 'CANCELLED: '.$reason, cancel: true);
+    }
+
+    /**
+     * Return some (or all) of a bill.
+     *  - stock goes back (packs → base bottles), 19L refills give the filled bottle back
+     *  - value of what came back first reduces any udhaar still due on this bill,
+     *    the rest is refunded: cash / bank out, or kept as customer advance ("advance")
+     *
+     * @param array<int|string, float|int> $lines invoice_item_id => quantity to return
+     */
+    public function returnItems(Invoice $invoice, array $lines, string $refundMethod = 'cash', ?string $reason = null, bool $cancel = false): SalesReturn
+    {
+        return $this->transaction(function () use ($invoice, $lines, $refundMethod, $reason, $cancel): SalesReturn {
+            $invoice = Invoice::lockForUpdate()->findOrFail($invoice->id);
+            if (in_array($invoice->status, ['returned', 'cancelled'], true)) {
+                throw ValidationException::withMessages(['invoice' => "Invoice {$invoice->invoice_number} is already {$invoice->status}."]);
+            }
+            if ($refundMethod === 'advance' && ! $invoice->customer_id) {
+                throw ValidationException::withMessages(['refund_method' => 'Walk-in sale — refund in cash or bank.']);
+            }
+
+            $items = $invoice->items()->with('product')->get()->keyBy('id');
+            // Bill-level discount/tax spread over the lines: value of a returned unit = line_total/qty × factor.
+            $linesTotal = (float) $items->sum('line_total');
+            $factor = $linesTotal > 0 ? (float) $invoice->grand_total / $linesTotal : 0.0;
+
             $return = SalesReturn::create([
                 'return_number' => 'RET-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
                 'invoice_id' => $invoice->id,
                 'customer_id' => $invoice->customer_id,
-                'total' => $invoice->grand_total,
+                'total' => 0,
                 'reason' => $reason,
                 'returned_at' => now()->toDateString(),
                 'created_by' => auth()->id(),
             ]);
 
-            foreach ($invoice->items()->with('product')->get() as $item) {
+            $value = 0.0;
+            $refillsBack = 0;
+            $refillId = Product::where('sku', Setting::get('sales', 'refill_service_sku') ?? '19L-REFILL')->value('id');
+
+            foreach ($lines as $itemId => $qty) {
+                $qty = (float) $qty;
+                $item = $items[$itemId] ?? null;
+                if (! $item || $qty <= 0) {
+                    continue;
+                }
+                $left = (float) $item->quantity - (float) $item->returned_qty;
+                if ($qty > $left + 0.0001) {
+                    throw ValidationException::withMessages(['items' => "{$item->product?->name}: only {$left} can be returned."]);
+                }
+
+                $lineValue = round($qty * ((float) $item->line_total / (float) $item->quantity) * $factor, 2);
+                $value += $lineValue;
+                $item->update(['returned_qty' => (float) $item->returned_qty + $qty]);
+
                 $return->items()->create([
+                    'invoice_item_id' => $item->id,
                     'product_id' => $item->product_id,
                     'variant_id' => $item->variant_id,
-                    'quantity' => $item->quantity,
+                    'quantity' => $qty,
                     'unit_price' => $item->unit_price,
-                    'line_total' => $item->line_total,
+                    'line_total' => $lineValue,
                 ]);
 
-                // Restock what the sale deducted: a pack returns pack_size base bottles;
-                // services / untracked products hold no stock of their own.
-                $product = $item->product;
-                if ($product?->isPack()) {
-                    $this->inventory->move([
-                        'warehouse_id' => $invoice->warehouse_id,
-                        'product_id' => $product->pack_of_product_id,
-                        'type' => StockMovementType::Return,
-                        'quantity' => (float) $item->quantity * max(1, (int) $product->pack_size),
-                        'reference' => $return,
-                        'note' => "Pack ({$product->pack_size}) — Return {$return->return_number}",
-                    ]);
-                } elseif ($product && $product->track_inventory && ! $product->is_service) {
-                    $this->inventory->move([
-                        'warehouse_id' => $invoice->warehouse_id,
-                        'product_id' => $item->product_id,
-                        'variant_id' => $item->variant_id,
-                        'type' => StockMovementType::Return,
-                        'quantity' => (float) $item->quantity,
-                        'reference' => $return,
-                        'note' => "Return {$return->return_number}",
+                $this->restock($invoice, $item->product, $item->variant_id, $qty, $return);
+                if ($item->product_id === $refillId) {
+                    $refillsBack += (int) $qty;
+                }
+            }
+
+            $value = round($value, 2);
+            if ($value <= 0) {
+                throw ValidationException::withMessages(['items' => 'Select at least one item to return.']);
+            }
+
+            // A returned refill hands the filled company bottle back.
+            if ($refillsBack > 0 && $invoice->bottles_delivered !== null) {
+                $this->restockBottles($invoice, $refillsBack, $return);
+            }
+
+            // Money: first wipe udhaar still due on this bill, then refund the rest.
+            $reduceDue = round(min($value, max(0.0, (float) $invoice->balance)), 2);
+            $refund = round($value - $reduceDue, 2);
+            $customer = $invoice->customer_id ? Customer::find($invoice->customer_id) : null;
+
+            if ($customer && $reduceDue > 0) {
+                $this->ledger->post($customer, 0, $reduceDue, $return, "Return {$return->return_number} (udhaar reduced)");
+            }
+            if ($refund > 0) {
+                if ($refundMethod === 'advance') {
+                    // Kept as the customer's advance — used on their next bill.
+                    $this->ledger->post($customer, 0, $refund, $return, "Return {$return->return_number} (kept as advance)");
+                } else {
+                    Payment::create([
+                        'reference' => 'RFD-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+                        'payable_type' => $invoice->getMorphClass(),
+                        'payable_id' => $invoice->getKey(),
+                        'amount' => $refund,
+                        'method' => $refundMethod,
+                        'direction' => 'out',
+                        'paid_at' => now()->toDateString(),
+                        'note' => "Refund {$return->return_number}",
+                        'created_by' => auth()->id(),
                     ]);
                 }
             }
 
-            if ($invoice->customer_id) {
-                $this->ledger->post(Customer::find($invoice->customer_id), 0, (float) $invoice->grand_total, $return, "Sales return {$return->return_number}");
-            }
+            $return->update(['total' => $value]);
 
-            $invoice->update(['status' => 'returned']);
+            $allBack = $invoice->items()->get()->every(fn ($i) => (float) $i->returned_qty >= (float) $i->quantity);
+            $invoice->update([
+                'returned_total' => round((float) $invoice->returned_total + $value, 2),
+                'balance' => round((float) $invoice->balance - $reduceDue, 2),
+                'status' => $allBack ? ($cancel ? 'cancelled' : 'returned') : ((float) $invoice->balance - $reduceDue <= 0 ? 'paid' : $invoice->status),
+            ]);
 
-            return $return;
+            return $return->load('items');
         });
+    }
+
+    /** @return array<int, float> every line's not-yet-returned quantity */
+    private function allRemaining(Invoice $invoice): array
+    {
+        return $invoice->items()->get()
+            ->mapWithKeys(fn ($i) => [$i->id => (float) $i->quantity - (float) $i->returned_qty])
+            ->filter(fn ($q) => $q > 0)->all();
+    }
+
+    /** Put back what a sale line took out: a pack returns pack_size base bottles; services hold no stock. */
+    private function restock(Invoice $invoice, ?Product $product, ?int $variantId, float $qty, SalesReturn $return): void
+    {
+        if ($product?->isPack()) {
+            $this->inventory->move([
+                'warehouse_id' => $invoice->warehouse_id,
+                'product_id' => $product->pack_of_product_id,
+                'type' => StockMovementType::Return,
+                'quantity' => $qty * max(1, (int) $product->pack_size),
+                'reference' => $return,
+                'note' => "Pack ({$product->pack_size}) — Return {$return->return_number}",
+            ]);
+        } elseif ($product && $product->track_inventory && ! $product->is_service) {
+            $this->inventory->move([
+                'warehouse_id' => $invoice->warehouse_id,
+                'product_id' => $product->id,
+                'variant_id' => $variantId,
+                'type' => StockMovementType::Return,
+                'quantity' => $qty,
+                'reference' => $return,
+                'note' => "Return {$return->return_number}",
+            ]);
+        }
+    }
+
+    /** Refills returned: the filled company bottles come back to the shop and off the customer. */
+    private function restockBottles(Invoice $invoice, int $count, SalesReturn $return): void
+    {
+        $bottle = Product::where('sku', Setting::get('sales', 'bottle_19l_sku') ?? '19L-BOTTLE')->first();
+        if ($bottle && $bottle->track_inventory) {
+            $this->inventory->move([
+                'warehouse_id' => $invoice->warehouse_id,
+                'product_id' => $bottle->id,
+                'type' => StockMovementType::Return,
+                'quantity' => $count,
+                'reference' => $return,
+                'note' => "19L bottles back — Return {$return->return_number}",
+            ]);
+        }
+        if ($invoice->customer_id) {
+            $this->gallons->record(['customer_id' => $invoice->customer_id, 'type' => 'return', 'quantity' => $count, 'note' => $return->return_number]);
+        }
+        $invoice->update(['bottles_delivered' => max(0, (int) $invoice->bottles_delivered - $count)]);
     }
 
     private function status(float $grand, float $paid): string

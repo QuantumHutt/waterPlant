@@ -72,7 +72,7 @@ class CustomerController extends Controller
             'amount' => ['required', 'numeric', 'gt:0', 'max:'.$owed],
             'method' => ['nullable', 'in:cash,bank,cheque,card'],
             'note' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], ['amount.max' => 'Udhaar sirf Rs :max hai — is se zyada nahi le sakte.']);
         $data['amount'] = round((float) $data['amount'], 2);
         $result = $this->service->recordPayment($customer, (float) $data['amount'], $data['note'] ?? null, $data['method'] ?? 'cash');
 
@@ -82,5 +82,22 @@ class CustomerController extends Controller
         }
 
         return back()->with('success', $msg);
+    }
+
+    /** Take money in advance. Only when the customer has no udhaar — collect udhaar first. */
+    public function advance(Request $request, Customer $customer): RedirectResponse
+    {
+        abort_unless($request->user()->can('customers.collect'), 403);
+        if ((float) $customer->current_balance > 0) {
+            return back()->withErrors(['amount' => 'Pehle udhaar Rs '.number_format((float) $customer->current_balance, 0).' wasool karein, phir advance.']);
+        }
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'method' => ['nullable', 'in:cash,bank,cheque,card'],
+        ]);
+        $this->service->receiveAdvance($customer, (float) $data['amount'], $data['method'] ?? 'cash');
+        $held = -(float) $customer->fresh()->current_balance;
+
+        return back()->with('success', '✓ Advance '.\App\Support\Money::format((float) $data['amount'])." from {$customer->name} — total advance ".\App\Support\Money::format($held));
     }
 }

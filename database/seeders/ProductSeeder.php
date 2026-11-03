@@ -26,7 +26,7 @@ class ProductSeeder extends Seeder
     /** Products no longer sold/stocked. Deactivated (not deleted) — history still points to them. */
     public const RETIRED = [
         'PACK-500-24', 'PACK-6000-6',
-        'RAW-WATER', 'BTL-500', 'BTL-1500', 'BTL-6000', 'CAP-STD', 'LBL-C1', 'LBL-C2',
+        'RAW-WATER', 'LBL-C1', 'LBL-C2',
         'CHEM-CL', 'FLT-SED', 'RO-MEM', 'PKG-SHRINK',
     ];
 
@@ -37,7 +37,8 @@ class ProductSeeder extends Seeder
             'bottled_water' => 'Bottled Water',   // sealed bottles + packs
             'service' => 'Services',              // refills (no stock)
             'finished_goods' => 'Bulk Water',     // produced filtered water (litres)
-            'bottle' => 'Bottles',                // 19L bottles
+            'bottle' => 'Bottles',                // 19L bottles + empty bottles you buy
+            'cap' => 'Caps',
         ];
 
         $cat = [];
@@ -166,7 +167,29 @@ class ProductSeeder extends Seeder
             'track_inventory' => false, // stock lives on 19L-BOTTLE
         ]);
 
-        // 9. Retire products the shop doesn't sell (re-enable any from the Products page).
+        // 9. PURCHASED MATERIALS — empty bottles & caps you buy, then fill in Production.
+        //    Cost here is a starting value; each received purchase updates it to the real price.
+        // [sku, name, category, cost]
+        $materials = [
+            ['BTL-500', 'Empty 500ml Bottle', 'bottle', 13],
+            ['BTL-1500', 'Empty 1.5L Bottle', 'bottle', 25],
+            ['BTL-6000', 'Empty 6L Bottle', 'bottle', 72],
+            ['CAP-STD', 'Bottle Cap', 'cap', 0.8],
+        ];
+        foreach ($materials as [$sku, $name, $type, $cost]) {
+            $this->product($sku, [
+                'category_id' => $cat[$type]->id,
+                'name' => $name,
+                'type' => ProductType::Consumable->value,
+                'unit' => ProductUnit::Pcs->value,
+                'cost_price' => $cost,
+                'sale_price' => 0,          // not sold — used up in production
+                'reorder_level' => 100,
+                'track_inventory' => true,
+            ]);
+        }
+
+        // 10. Retire products the shop doesn't sell (re-enable any from the Products page).
         Product::whereIn('sku', self::RETIRED)->where('is_active', true)->get()
             ->each(fn (Product $p) => $p->update(['is_active' => false]));
     }

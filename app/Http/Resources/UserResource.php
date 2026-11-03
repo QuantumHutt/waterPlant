@@ -21,6 +21,8 @@ class UserResource extends JsonResource
             'avatar' => $this->avatar,
             'is_active' => $this->is_active,
             'roles' => $this->whenLoaded('roles', fn () => $this->getRoleNames()),
+            // Extra permissions given to this user directly (not via a role).
+            'direct_permissions' => $this->whenLoaded('permissions', fn () => $this->permissions->pluck('name')),
             'permissions' => $this->when(
                 $request->boolean('with_permissions'),
                 fn () => $this->getAllPermissions()->pluck('name'),

@@ -21,7 +21,7 @@ class Invoice extends Model implements Auditable
 
     protected $fillable = [
         'invoice_number', 'customer_id', 'warehouse_id', 'salesman_id', 'type', 'status',
-        'invoice_date', 'due_date', 'subtotal', 'discount', 'tax_total', 'grand_total', 'deposit_total', 'bottles_delivered', 'bottles_returned',
+        'invoice_date', 'due_date', 'subtotal', 'discount', 'tax_total', 'grand_total', 'returned_total', 'deposit_total', 'bottles_delivered', 'bottles_returned',
         'paid_total', 'balance', 'note', 'created_by',
     ];
 

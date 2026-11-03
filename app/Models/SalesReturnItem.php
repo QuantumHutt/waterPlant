@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class SalesReturnItem extends Model
 {
-    protected $fillable = ['sales_return_id', 'product_id', 'variant_id', 'quantity', 'unit_price', 'line_total'];
+    protected $fillable = ['sales_return_id', 'invoice_item_id', 'product_id', 'variant_id', 'quantity', 'unit_price', 'line_total'];
 
     protected $casts = [
         'quantity' => 'decimal:3',

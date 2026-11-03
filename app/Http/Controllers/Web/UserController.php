@@ -33,6 +33,10 @@ class UserController extends Controller
             'users' => UserResource::collection($users),
             'filters' => $request->only(['search', 'role', 'is_active']),
             'roles' => collect(RoleName::cases())->map(fn ($r) => ['value' => $r->value, 'label' => $r->label()]),
+            'permissionGroups' => \App\Support\Permissions::GROUPS,
+            // What each role already gives (shown ticked + locked when adding extras).
+            'rolePermissions' => \Spatie\Permission\Models\Role::with('permissions:id,name')->get()
+                ->mapWithKeys(fn ($r) => [$r->name => $r->name === RoleName::SuperAdmin->value ? \App\Support\Permissions::all() : $r->permissions->pluck('name')]),
         ]);
     }
 

@@ -27,6 +27,9 @@ class StoreUserRequest extends FormRequest
             'is_active' => ['boolean'],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['string', Rule::in(RoleName::values())],
+            // Extra permissions for this user on top of their role(s).
+            'permissions' => ['sometimes', 'array'],
+            'permissions.*' => ['string', Rule::in(\App\Support\Permissions::all())],
         ];
     }
 }

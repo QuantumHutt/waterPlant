@@ -23,10 +23,10 @@ class DashboardService extends BaseService
 
         // Sales exclude cancelled/returned invoices.
         $soldToday = (float) Invoice::whereDate('invoice_date', $today)
-            ->whereNotIn('status', ['cancelled', 'returned'])->sum('grand_total');
+            ->whereNotIn('status', ['cancelled', 'returned'])->sum(DB::raw('grand_total - returned_total')); // net of partial returns
 
         $soldMonth = (float) Invoice::whereBetween('invoice_date', [$monthStart, $today])
-            ->whereNotIn('status', ['cancelled', 'returned'])->sum('grand_total');
+            ->whereNotIn('status', ['cancelled', 'returned'])->sum(DB::raw('grand_total - returned_total')); // net of partial returns
 
         $waterToday = (float) ProductionBatch::whereDate('production_date', $today)->sum('filtered_water_litres');
 
@@ -68,10 +68,10 @@ class DashboardService extends BaseService
             ->whereNull('invoices.deleted_at')
             ->groupBy('invoice_items.product_id')
             ->selectRaw('invoice_items.product_id,
-                SUM(CASE WHEN invoices.invoice_date = ? THEN invoice_items.quantity ELSE 0 END) as today_qty,
-                SUM(CASE WHEN invoices.invoice_date = ? THEN invoice_items.line_total ELSE 0 END) as today_amount,
-                SUM(invoice_items.quantity) as month_qty,
-                SUM(invoice_items.line_total) as month_amount', [$today, $today])
+                SUM(CASE WHEN invoices.invoice_date = ? THEN (invoice_items.quantity - invoice_items.returned_qty) ELSE 0 END) as today_qty,
+                SUM(CASE WHEN invoices.invoice_date = ? THEN invoice_items.line_total * (invoice_items.quantity - invoice_items.returned_qty) / NULLIF(invoice_items.quantity, 0) ELSE 0 END) as today_amount,
+                SUM((invoice_items.quantity - invoice_items.returned_qty)) as month_qty,
+                SUM(invoice_items.line_total * (invoice_items.quantity - invoice_items.returned_qty) / NULLIF(invoice_items.quantity, 0)) as month_amount', [$today, $today])
             ->get()->keyBy('product_id');
 
         $onHand = DB::table('stock_items')->groupBy('product_id')

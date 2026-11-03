@@ -27,6 +27,7 @@ class ProfitService
 {
     /** Line revenue net of line discount and its share of the bill discount (excl. tax). */
     private const REVENUE = '(invoice_items.quantity * invoice_items.unit_price - invoice_items.discount)'
+        .' * (invoice_items.quantity - invoice_items.returned_qty) / NULLIF(invoice_items.quantity, 0)'
         .' * (1 - COALESCE(invoices.discount / NULLIF(invoices.subtotal, 0), 0))';
 
     /** @return array<string, mixed> */
@@ -97,8 +98,8 @@ class ProfitService
             ->join('products', 'products.id', '=', 'invoice_items.product_id')
             ->groupBy('products.id', 'products.name', 'products.sku', DB::raw($channel))
             ->orderBy('products.name')
-            ->selectRaw("products.name, products.sku, {$channel} as channel, SUM(invoice_items.quantity) as qty,
-                SUM(CASE WHEN invoice_items.unit_cost IS NULL THEN invoice_items.quantity ELSE 0 END) as pending_qty, "
+            ->selectRaw("products.name, products.sku, {$channel} as channel, SUM((invoice_items.quantity - invoice_items.returned_qty)) as qty,
+                SUM(CASE WHEN invoice_items.unit_cost IS NULL THEN (invoice_items.quantity - invoice_items.returned_qty) ELSE 0 END) as pending_qty, "
                 .$this->salesColumns())
             ->get()
             ->map(function ($r) {
@@ -144,9 +145,9 @@ class ProfitService
             ->groupBy(DB::raw('COALESCE(products.pack_of_product_id, products.id)'))
             ->orderByDesc('revenue')
             ->selectRaw("MAX({$label}) as label,
-                SUM(invoice_items.quantity * CASE WHEN products.pack_of_product_id IS NULL THEN 1 ELSE products.pack_size END) as bottles,
-                SUM(CASE WHEN products.pack_of_product_id IS NULL THEN invoice_items.quantity ELSE 0 END) as singles,
-                SUM(CASE WHEN products.pack_of_product_id IS NULL THEN 0 ELSE invoice_items.quantity END) as packs,
+                SUM((invoice_items.quantity - invoice_items.returned_qty) * CASE WHEN products.pack_of_product_id IS NULL THEN 1 ELSE products.pack_size END) as bottles,
+                SUM(CASE WHEN products.pack_of_product_id IS NULL THEN (invoice_items.quantity - invoice_items.returned_qty) ELSE 0 END) as singles,
+                SUM(CASE WHEN products.pack_of_product_id IS NULL THEN 0 ELSE (invoice_items.quantity - invoice_items.returned_qty) END) as packs,
                 MAX(products.is_service) as is_service, "
                 .$this->salesColumns())
             ->get()
@@ -192,7 +193,7 @@ class ProfitService
         return "COUNT(DISTINCT invoices.id) as invoices,
             COALESCE(SUM({$rev}), 0) as revenue,
             COALESCE(SUM(CASE WHEN invoice_items.unit_cost IS NOT NULL THEN {$rev} ELSE 0 END), 0) as costed_revenue,
-            COALESCE(SUM(CASE WHEN invoice_items.unit_cost IS NOT NULL THEN invoice_items.quantity * invoice_items.unit_cost ELSE 0 END), 0) as cogs,
+            COALESCE(SUM(CASE WHEN invoice_items.unit_cost IS NOT NULL THEN (invoice_items.quantity - invoice_items.returned_qty) * invoice_items.unit_cost ELSE 0 END), 0) as cogs,
             COALESCE(SUM(CASE WHEN invoice_items.unit_cost IS NULL THEN {$rev} ELSE 0 END), 0) as pending_revenue";
     }
 

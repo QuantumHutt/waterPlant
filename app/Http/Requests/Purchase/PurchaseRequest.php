@@ -28,6 +28,10 @@ class PurchaseRequest extends FormRequest
             'items.*.variant_id' => ['nullable', 'exists:product_variants,id'],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.unit_cost' => ['required', 'numeric', 'min:0'],
+            // One step: goods arrived now, and (optionally) paid now from drawer / bank.
+            'receive_now' => ['sometimes', 'boolean'],
+            'paid_amount' => ['nullable', 'numeric', 'min:0'],
+            'paid_method' => ['nullable', 'in:cash,bank,cheque'],
         ];
     }
 }

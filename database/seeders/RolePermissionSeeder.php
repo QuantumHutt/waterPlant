@@ -21,23 +21,35 @@ class RolePermissionSeeder extends Seeder
 
         $guard = 'web';
 
-        // 1. Create every permission.
+        // 1. Create every permission — remember which are brand new.
+        $newPermissions = [];
         foreach (Permissions::all() as $name) {
-            Permission::findOrCreate($name, $guard);
+            if (Permission::findOrCreate($name, $guard)->wasRecentlyCreated) {
+                $newPermissions[] = $name;
+            }
         }
 
-        // 2. Create all roles.
+        // 2. Create all roles — remember which are brand new.
+        $newRoles = [];
         foreach (RoleName::cases() as $role) {
-            Role::findOrCreate($role->value, $guard);
+            if (Role::findOrCreate($role->value, $guard)->wasRecentlyCreated) {
+                $newRoles[] = $role->value;
+            }
         }
 
         // 3. Super Admin gets all permissions explicitly (also bypasses via Gate::before).
         Role::findByName(RoleName::SuperAdmin->value, $guard)
             ->syncPermissions(Permissions::all());
 
-        // 4. Assign the default matrix to the remaining roles.
+        // 4. Default matrix. A new role gets its full default set; an existing role keeps the
+        //    owner's edits (Roles & Permissions page) and only receives permissions that are new.
         foreach (Permissions::roleMatrix() as $roleName => $permissions) {
-            Role::findByName($roleName, $guard)->syncPermissions($permissions);
+            $role = Role::findByName($roleName, $guard);
+            if (in_array($roleName, $newRoles, true)) {
+                $role->syncPermissions($permissions);
+            } elseif ($add = array_values(array_intersect($permissions, $newPermissions))) {
+                $role->givePermissionTo($add);
+            }
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();

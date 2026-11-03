@@ -56,6 +56,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('customers', CustomerController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('customers/{customer}/ledger', [CustomerController::class, 'ledger'])->name('customers.ledger');
     Route::post('customers/{customer}/payment', [CustomerController::class, 'payment'])->name('customers.payment');
+    Route::post('customers/{customer}/advance', [CustomerController::class, 'advance'])->name('customers.advance');
 
     // Suppliers
     Route::resource('suppliers', SupplierController::class)->only(['index', 'store', 'update', 'destroy']);
@@ -67,12 +68,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('purchases/{purchase}/receive', [PurchaseController::class, 'receive'])->name('purchases.receive');
 
     // Sales / POS
+    Route::get('roles', [\App\Http\Controllers\Web\RoleController::class, 'index'])->name('roles.index');
+    Route::put('roles/{role}', [\App\Http\Controllers\Web\RoleController::class, 'update'])->name('roles.update');
+    Route::get('cash', [\App\Http\Controllers\Web\CashController::class, 'index'])->name('cash.index');
+    Route::post('cash/transfer', [\App\Http\Controllers\Web\CashController::class, 'transfer'])->name('cash.transfer');
+    Route::post('cash/close', [\App\Http\Controllers\Web\CashController::class, 'close'])->name('cash.close');
     Route::get('sales', [SaleController::class, 'index'])->name('sales.index');
     Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
     Route::get('sales/{invoice}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');
     Route::get('sales/{invoice}/invoice', [SaleController::class, 'invoice'])->name('sales.invoice');
     Route::post('sales/{invoice}/payment', [SaleController::class, 'payment'])->name('sales.payment');
     Route::post('sales/{invoice}/return', [SaleController::class, 'returnInvoice'])->name('sales.return');
+    Route::post('sales/{invoice}/cancel', [SaleController::class, 'cancel'])->name('sales.cancel');
 
     // Production
     Route::get('production', [ProductionController::class, 'index'])->name('production.index');

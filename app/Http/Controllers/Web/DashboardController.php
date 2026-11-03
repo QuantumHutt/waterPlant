@@ -7,7 +7,6 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Services\DashboardService;
 use App\Services\ProfitService;
-use App\Support\Enums\RoleName;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,8 +21,9 @@ class DashboardController extends Controller
 
     public function index(Request $request): Response|RedirectResponse
     {
-        // Salesman works on the POS only — business metrics stay with the owner/managers.
-        if ($request->user()->hasRole(RoleName::Salesman->value)) {
+        // POS staff without report access (e.g. salesman) go straight to the POS. Give a user
+        // "Reports" and the dashboard opens for them.
+        if (! $request->user()->can('reports.view') && $request->user()->can('sales.create')) {
             return redirect()->route('sales.index');
         }
 

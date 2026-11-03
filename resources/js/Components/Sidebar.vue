@@ -6,12 +6,12 @@ import { computed } from 'vue'
 import {
     LayoutDashboard, Package, Boxes, FlaskConical, Container, ShoppingCart,
     Receipt, Users as UsersIcon, Truck, Calculator, Wallet, UserCog,
-    Droplets, BarChart3, ShieldCheck, Settings, Building2, Home,
+    Droplets, BarChart3, ShieldCheck, Settings, Building2, Home, Banknote,
 } from 'lucide-vue-next'
 
 defineProps({ onClose: { type: Function, default: () => {} } })
 
-const { can, canAny, hasRole } = usePermissions()
+const { can, canAny } = usePermissions()
 const page = usePage()
 
 // route() comes from Ziggy (global). Helper that tolerates unbuilt routes.
@@ -24,7 +24,7 @@ const isCurrent = (name) => {
 }
 
 const nav = computed(() => [
-    { label: 'Dashboard', icon: LayoutDashboard, route: 'dashboard', show: !hasRole('salesman') },
+    { label: 'Dashboard', icon: LayoutDashboard, route: 'dashboard', show: can('reports.view') || !can('sales.create') },
     { label: 'Products', icon: Package, route: 'products.index', show: can('products.view') },
     { label: 'Inventory', icon: Boxes, route: 'inventory.index', show: can('inventory.view') },
     { label: 'Internal Use', icon: Home, route: 'consumption.index', show: can('consumption.view') },
@@ -37,6 +37,7 @@ const nav = computed(() => [
     { label: 'Delivery', icon: Truck, route: 'delivery.index', show: can('delivery.view') },
     { label: 'Accounting', icon: Calculator, route: 'accounting.index', show: can('accounting.view') },
     { label: 'Expenses', icon: Wallet, route: 'expenses.index', show: can('expenses.view') },
+    { label: 'Cash Book', icon: Banknote, route: 'cash.index', show: can('cash.view') },
     { label: 'Employees', icon: UserCog, route: 'employees.index', show: can('employees.view') },
     { label: 'Water Quality', icon: Droplets, route: 'quality.index', show: can('quality.view') },
     { label: 'Reports', icon: BarChart3, route: 'reports.index', show: can('reports.view') },
@@ -44,6 +45,7 @@ const nav = computed(() => [
 
 const adminNav = computed(() => [
     { label: 'Users', icon: ShieldCheck, route: 'users.index', show: can('users.view') },
+    { label: 'Roles & Permissions', icon: ShieldCheck, route: 'roles.index', show: can('roles.view') },
     { label: 'Settings', icon: Settings, route: 'settings.index', show: can('settings.view') },
 ])
 </script>
