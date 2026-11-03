@@ -182,7 +182,8 @@ class SaleController extends Controller
             'reason' => ['nullable', 'string', 'max:200'],
         ]);
         $method = $data['refund_method'] ?? 'cash';
-        $return = empty(array_filter($data['items'] ?? []))
+        // No item list at all = whole bill. A list (even all zeros) = exactly what was ticked.
+        $return = empty($data['items'])
             ? $this->service->returnInvoice($invoice, $data['reason'] ?? null, $method)
             : $this->service->returnItems($invoice, $data['items'], $method, $data['reason'] ?? null);
 

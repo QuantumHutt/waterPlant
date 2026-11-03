@@ -56,7 +56,12 @@ class SaleService extends BaseService
             $discount = min((float) ($data['discount'] ?? 0), $subtotal); // never a negative bill
             $grand = round($subtotal - $discount + $taxTotal, 2);
             $paid = (float) ($data['paid_total'] ?? ($data['type'] === 'credit' ? 0 : $grand));
-            $paid = min($paid, $grand);
+            $paid = max(0.0, min($paid, $grand));
+
+            // Money still owed needs a named customer — a walk-in udhaar can never be collected.
+            if (empty($data['customer_id']) && $paid < $grand) {
+                throw ValidationException::withMessages(['customer_id' => 'Baqaya (udhaar) ke liye customer select karein — walk-in par udhaar nahi ho sakta.']);
+            }
 
             $invoice = Invoice::create([
                 'invoice_number' => $this->invoiceNumber(),
@@ -73,7 +78,7 @@ class SaleService extends BaseService
                 // Start unpaid; the payment below applies the amount exactly once.
                 'paid_total' => 0,
                 'balance' => $grand,
-                'status' => 'unpaid',
+                'status' => $this->status($grand, 0),
                 'note' => $data['note'] ?? null,
                 'created_by' => auth()->id(),
             ]);
@@ -566,6 +571,9 @@ class SaleService extends BaseService
 
     private function status(float $grand, float $paid): string
     {
+        if ($grand <= 0) {
+            return 'paid';          // nothing to pay (free / fully discounted)
+        }
         if ($paid <= 0) {
             return 'unpaid';
         }

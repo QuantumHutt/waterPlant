@@ -92,6 +92,9 @@ const cards = [
                         class="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
                         Hisaab: {{ format(cashToday.suggested) }} bank mein, {{ format(cashToday.float) }} change →
                     </button>
+                    <span v-else-if="can('cash.transfer') && cashToday.drawer > 0" class="self-center rounded-full bg-muted px-4 py-2 text-xs text-muted-foreground">
+                        Drawer ({{ format(cashToday.drawer) }}) change ({{ format(cashToday.float) }}) se kam hai — abhi deposit nahi banta
+                    </span>
                     <button v-if="can('cash.transfer')" type="button" @click="showDeposit = !showDeposit; deposit.amount = null; keepCash = null"
                         class="rounded-full bg-muted px-4 py-2.5 text-sm font-semibold hover:bg-muted/70">Other amount</button>
                     <Link v-if="can('cash.close')" :href="route('cash.index')" class="rounded-full bg-warning/15 px-5 py-2.5 text-sm font-semibold text-warning hover:bg-warning/25">

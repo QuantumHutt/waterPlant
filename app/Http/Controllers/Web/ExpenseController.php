@@ -39,9 +39,9 @@ class ExpenseController extends Controller
             'note' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $this->service->create($data);
+        $expense = $this->service->create($data);
 
-        return back()->with('success', 'Expense recorded.');
+        return back()->with('success', '✓ Expense '.\App\Support\Money::format((float) $expense->amount)." — {$expense->category?->name}".($expense->paid_via === 'bank' ? ' (bank)' : ' (from drawer)'));
     }
 
     /** Owner/manager fixes a wrong expense. Old → new is kept in the audit log. */
