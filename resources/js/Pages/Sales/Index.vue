@@ -8,7 +8,7 @@ import { useCurrency } from '@/composables/useCurrency'
 import Modal from '@/Components/Modal.vue'
 import { Plus, Minus, Trash2, RotateCcw, Container, Printer, Barcode, FileText, User, Store, Banknote, NotebookPen, ChevronDown, Droplets, Package, Wallet, XCircle } from 'lucide-vue-next'
 
-const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, coolerRefill: Object, todayCounts: { type: [Object, Array], default: () => ({}) }, expenseCategories: { type: Array, default: () => [] }, bottleDeposit: { type: Number, default: 1000 } })
+const props = defineProps({ invoices: Object, customers: Array, warehouses: Array, products: Array, refillService: Object, coolerRefill: Object, todayCounts: { type: [Object, Array], default: () => ({}) }, expenseCategories: { type: Array, default: () => [] }, bottleCharge: { type: Number, default: 1300 }, bottleDeposit: { type: Number, default: 1000 } })
 const { can, isSuperAdmin } = usePermissions()
 const { format } = useCurrency()
 const page = usePage()
@@ -116,6 +116,26 @@ function receiveAdvance() {
         preserveScroll: true,
         preserveState: true,
         onSuccess: () => { advanceForm.reset(); showAdvance.value = false },
+    })
+}
+
+// ---- Company 19L bottles with this customer: empties back · lost / broken · deposit back ----
+const bottlesHeld = computed(() => Number(selectedCustomer.value?.bottles_held ?? 0))
+const depositHeld = computed(() => Number(selectedCustomer.value?.deposit_held ?? 0))
+const bottleAction = ref(null)   // return | missing | damaged | deposit_refund
+const bottleForm = useForm({ action: 'return', quantity: 1, charge_by: '', price: props.bottleCharge, amount: null, method: 'cash' })
+function openBottle(action) {
+    bottleAction.value = bottleAction.value === action ? null : action
+    bottleForm.reset()
+    bottleForm.clearErrors()
+    bottleForm.action = action
+    bottleForm.price = props.bottleCharge
+    if (action === 'deposit_refund') bottleForm.amount = Math.min(depositHeld.value, props.bottleDeposit)
+}
+function submitBottle() {
+    bottleForm.post(route('customers.bottles', selectedCustomer.value.id), {
+        preserveScroll: true, preserveState: true,
+        onSuccess: () => { if (!Object.keys(bottleForm.errors).length) bottleAction.value = null },
     })
 }
 
@@ -469,6 +489,47 @@ const statusTone = (s) => ({ paid: 'bg-success/10 text-success', partial: 'bg-wa
                             <button type="button" @click="receiveUdhaar" :disabled="collect.processing || !(collect.amount > 0)"
                                 class="ml-auto rounded-full bg-warning px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40">Receive</button>
                             <p v-if="collect.errors.amount" class="w-full text-xs text-destructive">{{ collect.errors.amount }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Company 19L bottles with this customer -->
+                    <div v-if="selectedCustomer && bottlesHeld > 0" class="mt-2 rounded-xl bg-brand/5 p-3 ring-1 ring-brand/20">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="font-semibold">19L bottles with customer</span>
+                            <span class="font-bold text-brand">{{ bottlesHeld }}<span v-if="depositHeld > 0" class="ml-1 text-xs font-medium text-muted-foreground">· deposit {{ format(depositHeld) }}</span></span>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-1.5">
+                            <button type="button" @click="openBottle('return')" class="rounded-full px-3 py-1 text-xs font-semibold" :class="bottleAction === 'return' ? 'bg-brand text-white' : 'bg-background ring-1 ring-border'">Empties back</button>
+                            <template v-if="can('gallons.manage')">
+                                <button type="button" @click="openBottle('missing')" class="rounded-full px-3 py-1 text-xs font-semibold" :class="bottleAction === 'missing' ? 'bg-destructive text-white' : 'bg-background ring-1 ring-border'">Lost</button>
+                                <button type="button" @click="openBottle('damaged')" class="rounded-full px-3 py-1 text-xs font-semibold" :class="bottleAction === 'damaged' ? 'bg-destructive text-white' : 'bg-background ring-1 ring-border'">Broken</button>
+                                <button v-if="depositHeld > 0" type="button" @click="openBottle('deposit_refund')" class="rounded-full px-3 py-1 text-xs font-semibold" :class="bottleAction === 'deposit_refund' ? 'bg-warning text-white' : 'bg-background ring-1 ring-border'">Return + refund deposit</button>
+                            </template>
+                        </div>
+                        <div v-if="bottleAction" class="mt-2 space-y-1.5 text-xs">
+                            <div class="flex items-center gap-2">
+                                <span class="text-muted-foreground">Bottles</span>
+                                <input v-model.number="bottleForm.quantity" type="number" min="1" :max="bottlesHeld" class="w-16 rounded-full border-border bg-background px-2 py-1 text-xs" />
+                            </div>
+                            <template v-if="bottleAction === 'missing' || bottleAction === 'damaged'">
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="text-muted-foreground">Charge customer?</span>
+                                    <select v-model="bottleForm.charge_by" class="rounded-full border-border bg-background py-1 text-xs">
+                                        <option value="">No — write off (loss)</option><option value="cash">Yes — cash now</option><option value="bank">Yes — bank</option>
+                                        <option value="udhaar">Yes — add to udhaar</option><option v-if="depositHeld > 0" value="deposit">Yes — from deposit</option>
+                                    </select>
+                                    <input v-if="bottleForm.charge_by" v-model.number="bottleForm.price" type="number" min="0" class="w-20 rounded-full border-border bg-background px-2 py-1 text-xs" title="Rs per bottle" />
+                                </div>
+                            </template>
+                            <div v-if="bottleAction === 'deposit_refund'" class="flex flex-wrap items-center gap-1.5">
+                                <span class="text-muted-foreground">Refund</span>
+                                <input v-model.number="bottleForm.amount" type="number" min="0" :max="depositHeld" class="w-24 rounded-full border-border bg-background px-2 py-1 text-xs" />
+                                <select v-model="bottleForm.method" class="rounded-full border-border bg-background py-1 text-xs">
+                                    <option value="cash">Cash</option><option value="bank">Bank</option><option value="advance">Keep as advance</option>
+                                </select>
+                            </div>
+                            <button type="button" @click="submitBottle" :disabled="bottleForm.processing" class="rounded-full bg-brand px-4 py-1.5 font-bold text-white disabled:opacity-40">Save</button>
+                            <p v-if="Object.keys(bottleForm.errors).length" class="text-destructive">{{ Object.values(bottleForm.errors)[0] }}</p>
                         </div>
                     </div>
 

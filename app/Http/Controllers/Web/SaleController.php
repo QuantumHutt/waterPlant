@@ -27,7 +27,13 @@ class SaleController extends Controller
         return Inertia::render('Sales/Index', [
             'invoices' => $this->service->list((int) $request->integer('per_page', 15), $request->only(['status', 'type'])),
             // current_balance = udhaar owed (shown at the POS; salesman can collect it).
-            'customers' => Customer::where('is_active', true)->get(['id', 'name', 'type', 'phone', 'current_balance']),
+            // + company 19L bottles they hold and deposit paid (bottle panel on the POS).
+            'customers' => Customer::where('customers.is_active', true)
+                ->leftJoin('customer_gallon_balances as gb', 'gb.customer_id', '=', 'customers.id')
+                ->get(['customers.id', 'customers.name', 'customers.type', 'customers.phone', 'customers.current_balance',
+                    \Illuminate\Support\Facades\DB::raw('COALESCE(gb.held_qty, 0) as bottles_held'),
+                    \Illuminate\Support\Facades\DB::raw('COALESCE(gb.deposit_held, 0) as deposit_held')]),
+            'bottleCharge' => (float) (\App\Models\Setting::get('sales', 'bottle_charge') ?? 1300),
             'warehouses' => Warehouse::where('is_active', true)->get(['id', 'name']),
             // Sealed sellable products only (excludes bulk water + the company bottle, which have no sale price).
             'products' => $this->sellableProducts(),

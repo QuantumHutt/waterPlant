@@ -43,4 +43,30 @@ class ExpenseController extends Controller
 
         return back()->with('success', 'Expense recorded.');
     }
+
+    /** Owner/manager fixes a wrong expense. Old → new is kept in the audit log. */
+    public function update(Request $request, \App\Models\Expense $expense): RedirectResponse
+    {
+        abort_unless($request->user()->can('expenses.update'), 403);
+        $data = $request->validate([
+            'category_id' => ['required', 'exists:expense_categories,id'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'paid_via' => ['required', 'in:cash,bank'],
+            'vendor' => ['nullable', 'string', 'max:255'],
+            'spent_at' => ['nullable', 'date'],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+        $old = (float) $expense->amount;
+        $this->service->update($expense, $data);
+
+        return back()->with('success', "✓ {$expense->reference} corrected: ".\App\Support\Money::format($old).' → '.\App\Support\Money::format((float) $data['amount']));
+    }
+
+    public function destroy(Request $request, \App\Models\Expense $expense): RedirectResponse
+    {
+        abort_unless($request->user()->can('expenses.delete'), 403);
+        $this->service->delete($expense);
+
+        return back()->with('success', "✓ Expense {$expense->reference} deleted");
+    }
 }

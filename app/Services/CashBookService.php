@@ -26,10 +26,12 @@ class CashBookService extends BaseService
         'sale' => 'Cash sales',
         'udhaar' => 'Udhaar received',
         'advance' => 'Advance received',
+        'bottle_deposit' => '19L bottle deposits',
         'withdrawal' => 'Bank → cash',
         'expense' => 'Expenses',
         'supplier' => 'Supplier payments',
         'refund' => 'Refunds (returns)',
+        'deposit_refund' => '19L deposit refunds',
         'deposit' => 'Cash → bank deposit',
     ];
 
@@ -150,8 +152,10 @@ class CashBookService extends BaseService
             }
             $kind = match (true) {
                 $p->direction === 'out' && $p->payable_type === $invoiceType => 'refund',
+                $p->direction === 'out' && $p->payable_type === $customerType => 'deposit_refund',
                 $p->direction === 'out' => 'supplier',
                 $p->payable_type === $customerType && str_starts_with($p->reference, 'ADV-') => 'advance',
+                $p->payable_type === $customerType && str_starts_with($p->reference, 'BDP-') => 'bottle_deposit',
                 $p->payable_type === $customerType => 'udhaar',
                 $p->payable_type === $invoiceType && $p->invoice_date && substr((string) $p->invoice_date, 0, 10) < substr((string) $p->paid_at, 0, 10) => 'udhaar',
                 default => 'sale',

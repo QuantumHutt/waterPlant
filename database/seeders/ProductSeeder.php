@@ -167,6 +167,21 @@ class ProductSeeder extends Seeder
             'track_inventory' => false, // stock lives on 19L-BOTTLE
         ]);
 
+        // 8b. LOST / BROKEN 19L BOTTLE CHARGE — billed to the customer. Cost = bottle cost,
+        //     so charging the full 1300 is profit 0 (the bottle's value comes back).
+        $this->product('BOTTLE-CHARGE', [
+            'category_id' => $cat['service']->id,
+            'name' => '19L Bottle Lost / Broken Charge',
+            'type' => ProductType::Finished->value,
+            'is_service' => true,
+            'is_manual_price' => true,
+            'unit' => ProductUnit::Pcs->value,
+            'water_litres' => 0,
+            'cost_price' => 1300,
+            'sale_price' => 0,          // not on the POS grid — charged from the bottle panel
+            'track_inventory' => false,
+        ]);
+
         // 9. PURCHASED MATERIALS — empty bottles & caps you buy, then fill in Production.
         //    Cost here is a starting value; each received purchase updates it to the real price.
         // [sku, name, category, cost]

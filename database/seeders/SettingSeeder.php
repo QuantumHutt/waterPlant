@@ -57,6 +57,7 @@ class SettingSeeder extends Seeder
                 'refill_litres' => 19,                // litres per 19L refill / new bottle
                 'track_refill_water' => false,        // false = refills are unlimited (no bulk-water stock check)
                 'bottle_deposit' => 1000,             // default refundable security per 19L bottle
+                'bottle_charge' => 1300,              // charge for a lost / broken company 19L bottle
             ],
         ];
 

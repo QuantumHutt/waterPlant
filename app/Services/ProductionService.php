@@ -126,6 +126,13 @@ class ProductionService extends BaseService
                 ]);
             }
 
+            // Bottles filled in this batch now cost what the batch used (empty + cap + water…).
+            // Only when the batch makes ONE product — a mixed batch can't be split fairly.
+            $outputIds = array_unique(array_map(fn ($o) => (int) $o['product_id'], $data['outputs'] ?? []));
+            if (count($outputIds) === 1 && $perUnitCost > 0) {
+                app(ProductCostService::class)->set($outputIds[0], $perUnitCost);
+            }
+
             $batch->update(['production_cost' => round($totalCost, 2)]);
 
             return $batch->load(['outputs', 'consumptions']);

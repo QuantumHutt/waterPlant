@@ -93,7 +93,7 @@ class SaleService extends BaseService
 
             // New 19L bottle sale: deduct a company bottle + record the refundable deposit.
             if (! empty($data['new_bottle'])) {
-                $this->issueBottleWithDeposit($invoice, (float) ($data['deposit'] ?? Setting::get('sales', 'bottle_deposit') ?? 0));
+                $this->issueBottleWithDeposit($invoice, (float) ($data['deposit'] ?? Setting::get('sales', 'bottle_deposit') ?? 0), $data['payment_method'] ?? 'cash');
             }
 
             if ($invoice->customer_id) {
@@ -221,7 +221,7 @@ class SaleService extends BaseService
     }
 
     /** Issue a company 19L bottle on a refundable deposit (liability), tracked per customer. */
-    private function issueBottleWithDeposit(Invoice $invoice, float $deposit): void
+    private function issueBottleWithDeposit(Invoice $invoice, float $deposit, string $method = 'cash'): void
     {
         $bottleSku = Setting::get('sales', 'bottle_19l_sku') ?? '19L-BOTTLE';
         $bottle = Product::where('sku', $bottleSku)->first();
@@ -242,6 +242,18 @@ class SaleService extends BaseService
             $this->gallons->record(['customer_id' => $invoice->customer_id, 'type' => 'issue', 'quantity' => 1, 'note' => $invoice->invoice_number]);
             if ($deposit > 0) {
                 $this->gallons->record(['customer_id' => $invoice->customer_id, 'type' => 'deposit', 'deposit_amount' => $deposit, 'note' => $invoice->invoice_number]);
+                // The deposit money came into the drawer (refundable — not a sale).
+                Payment::create([
+                    'reference' => 'BDP-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+                    'payable_type' => (new Customer)->getMorphClass(),
+                    'payable_id' => $invoice->customer_id,
+                    'amount' => $deposit,
+                    'method' => in_array($method, ['cash', 'bank', 'card', 'cheque'], true) ? $method : 'cash',
+                    'direction' => 'in',
+                    'paid_at' => now()->toDateString(),
+                    'note' => "Bottle deposit {$invoice->invoice_number}",
+                    'created_by' => auth()->id(),
+                ]);
             }
         }
 
@@ -443,6 +455,12 @@ class SaleService extends BaseService
             $return->update(['total' => $value]);
 
             $allBack = $invoice->items()->get()->every(fn ($i) => (float) $i->returned_qty >= (float) $i->quantity);
+
+            // Whole bill back on a "bottle on deposit" sale → the bottle comes back, deposit refunded.
+            if ($allBack && (float) $invoice->deposit_total > 0 && $customer) {
+                $this->refundDeposit($customer, 1, (float) $invoice->deposit_total, $refundMethod, $invoice->warehouse_id, "Deposit of {$invoice->invoice_number}");
+                $invoice->deposit_total = 0;
+            }
             $invoice->update([
                 'returned_total' => round((float) $invoice->returned_total + $value, 2),
                 'balance' => round((float) $invoice->balance - $reduceDue, 2),
@@ -450,6 +468,45 @@ class SaleService extends BaseService
             ]);
 
             return $return->load('items');
+        });
+    }
+
+    /**
+     * Customer hands back company 19L bottle(s) held on deposit → bottles back in stock, deposit
+     * paid back (cash / bank out), or kept as the customer's advance ("advance").
+     */
+    public function refundDeposit(Customer $customer, int $qty, float $amount, string $method, int $warehouseId, ?string $note = null): void
+    {
+        $this->transaction(function () use ($customer, $qty, $amount, $method, $warehouseId, $note): void {
+            $bottle = Product::where('sku', Setting::get('sales', 'bottle_19l_sku') ?? '19L-BOTTLE')->first();
+            if ($qty > 0) {
+                if ($bottle && $bottle->track_inventory) {
+                    $this->inventory->move([
+                        'warehouse_id' => $warehouseId, 'product_id' => $bottle->id, 'type' => StockMovementType::Return,
+                        'quantity' => $qty, 'reference' => $customer, 'note' => $note ?? 'Deposit bottle returned',
+                    ]);
+                }
+                $this->gallons->record(['customer_id' => $customer->id, 'type' => 'return', 'quantity' => $qty, 'note' => $note]);
+            }
+            if ($amount <= 0) {
+                return;
+            }
+            $this->gallons->record(['customer_id' => $customer->id, 'type' => 'deposit_refund', 'deposit_amount' => $amount, 'note' => $note]);
+            if ($method === 'advance') {
+                $this->ledger->post($customer->fresh(), 0, $amount, null, ($note ?? 'Deposit').' — kept as advance');
+            } else {
+                Payment::create([
+                    'reference' => 'BDR-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+                    'payable_type' => $customer->getMorphClass(),
+                    'payable_id' => $customer->getKey(),
+                    'amount' => round($amount, 2),
+                    'method' => $method,
+                    'direction' => 'out',
+                    'paid_at' => now()->toDateString(),
+                    'note' => $note ?? 'Bottle deposit refunded',
+                    'created_by' => auth()->id(),
+                ]);
+            }
         });
     }
 

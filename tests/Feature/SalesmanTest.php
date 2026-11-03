@@ -20,7 +20,7 @@ class SalesmanTest extends TestCase {
     $this->seed(SalesmanSeeder::class);
     $u=User::where('email','umer@gmail.com')->firstOrFail();
     $this->assertTrue($u->hasRole('salesman'));
-    $this->assertTrue(Hash::check(env('SALESMAN_PASSWORD','password'),$u->password));
+    $this->assertTrue(Hash::check(env('SALESMAN_PASSWORD','blueroot123'),$u->password));
     $this->assertSame(1,User::where('email','umer@gmail.com')->count());
   }
 

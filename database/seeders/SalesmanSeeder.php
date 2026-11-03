@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
  *   php artisan db:seed --class=RolePermissionSeeder   # creates the salesman role + permissions
  *   php artisan db:seed --class=SalesmanSeeder
  *
- * Env overrides: SALESMAN_NAME, SALESMAN_EMAIL, SALESMAN_PASSWORD (default "password").
+ * Env overrides: SALESMAN_NAME, SALESMAN_EMAIL, SALESMAN_PASSWORD (default "blueroot123").
  * Re-running resets the password to SALESMAN_PASSWORD / the default — change it after first login.
  */
 class SalesmanSeeder extends Seeder

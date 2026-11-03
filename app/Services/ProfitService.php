@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
  *                      are reported as "pending revenue", never as 100% profit
  * − Expenses           expenses table, by spent_at (salaries are entered here when paid)
  * − Internal use       stock taken for owner/internal use at cost, less what was paid back
- * − Stock loss         damaged / wasted stock at cost
+ * − Stock loss         damaged / wasted stock at cost + 19L bottles lost at customers (written off)
  * + Other income       incomes table
  * = Net profit
  *
@@ -36,7 +36,8 @@ class ProfitService
         $sales = $this->salesLines($from, $to)->selectRaw($this->salesColumns())->first();
         $expenses = $this->expensesByCategory($from, $to);
         $internal = (float) $this->internalUse($from, $to)->sum(DB::raw('total_cost - amount_paid'));
-        $loss = (float) $this->stockLoss($from, $to)->sum(DB::raw('ABS(quantity) * unit_cost'));
+        $loss = (float) $this->stockLoss($from, $to)->sum(DB::raw('ABS(quantity) * unit_cost'))
+            + (float) $this->bottleLoss($from, $to)->sum('loss_value');
         $income = (float) DB::table('incomes')->whereBetween('received_at', [$from, $to])->sum('amount');
 
         return $this->totals(
@@ -71,6 +72,9 @@ class ProfitService
             ->selectRaw("DATE_FORMAT(moved_at, '{$fmt}') as k, SUM(ABS(quantity) * unit_cost) as v")->groupBy('k')->pluck('v', 'k');
         $income = DB::table('incomes')->whereBetween('received_at', [$from, $to])
             ->selectRaw("DATE_FORMAT(received_at, '{$fmt}') as k, SUM(amount) as v")->groupBy('k')->pluck('v', 'k');
+        foreach ($this->bottleLoss($from, $to)->selectRaw("DATE_FORMAT(transacted_at, '{$fmt}') as k, SUM(loss_value) as v")->groupBy('k')->pluck('v', 'k') as $k => $v) {
+            $loss[$k] = (float) ($loss[$k] ?? 0) + (float) $v;
+        }
 
         $keys = collect([$sales->keys(), $expenses->keys(), $internal->keys(), $loss->keys(), $income->keys()])
             ->flatten()->unique()->sortDesc()->values();
@@ -221,6 +225,15 @@ class ProfitService
     private function internalUse(string $from, string $to): Builder
     {
         return DB::table('internal_consumptions')->whereBetween('consumed_at', [$from, $to]);
+    }
+
+    /** Company 19L bottles lost / broken at a customer and written off (not charged). */
+    private function bottleLoss(string $from, string $to): Builder
+    {
+        return DB::table('gallon_transactions')
+            ->whereIn('type', ['missing', 'damaged'])
+            ->whereNull('charge_invoice_id')
+            ->whereBetween('transacted_at', [$from, $to]);
     }
 
     private function stockLoss(string $from, string $to): Builder

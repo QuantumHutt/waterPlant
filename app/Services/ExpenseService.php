@@ -16,7 +16,7 @@ class ExpenseService extends BaseService
 
     public function list(int $perPage = 15): LengthAwarePaginator
     {
-        return Expense::with('category')->latest('spent_at')->paginate($perPage);
+        return Expense::with(['category', 'creator:id,name'])->latest('spent_at')->latest('id')->paginate($perPage);
     }
 
     /**
@@ -40,16 +40,69 @@ class ExpenseService extends BaseService
                 'created_by' => auth()->id(),
             ]);
 
-            $category = ExpenseCategory::find($expense->category_id);
-            $expenseAccount = $category?->account_id ?? Account::byCode('5900')?->id;
-            $cashAccount = Account::byCode($expense->paid_via === 'bank' ? '1010' : '1000')?->id;
-
-            $this->accounting->post([
-                ['account_id' => $expenseAccount, 'debit' => (float) $expense->amount, 'credit' => 0],
-                ['account_id' => $cashAccount, 'debit' => 0, 'credit' => (float) $expense->amount],
-            ], "Expense {$expense->reference} — {$category?->name}", $expense, $expense->spent_at->toDateString());
+            $this->postJournal($expense);
 
             return $expense->load('category');
         });
+    }
+
+    /**
+     * Fix a wrong expense (e.g. 500 typed instead of 50). The old journal is reversed and the
+     * corrected one posted; the change itself is kept in the audit log (who, when, old → new).
+     *
+     * @param array<string,mixed> $data
+     */
+    public function update(Expense $expense, array $data): Expense
+    {
+        return $this->transaction(function () use ($expense, $data): Expense {
+            $this->reverseJournal($expense, "Correction of {$expense->reference}");
+            $expense->update([
+                'category_id' => $data['category_id'],
+                'amount' => $data['amount'],
+                'paid_via' => $data['paid_via'] ?? $expense->paid_via,
+                'vendor' => $data['vendor'] ?? $expense->vendor,
+                'spent_at' => $data['spent_at'] ?? $expense->spent_at,
+                'note' => $data['note'] ?? $expense->note,
+            ]);
+            $this->postJournal($expense->fresh());
+
+            return $expense->load('category');
+        });
+    }
+
+    /** Remove an expense entered by mistake: journal reversed, record deleted (kept in audit log). */
+    public function delete(Expense $expense): void
+    {
+        $this->transaction(function () use ($expense): void {
+            $this->reverseJournal($expense, "Deleted {$expense->reference}");
+            $expense->delete();
+        });
+    }
+
+    /** Dr expense account / Cr cash or bank. */
+    private function postJournal(Expense $expense): void
+    {
+        $category = ExpenseCategory::find($expense->category_id);
+        $this->accounting->post([
+            ['account_id' => $category?->account_id ?? Account::byCode('5900')?->id, 'debit' => (float) $expense->amount, 'credit' => 0],
+            ['account_id' => Account::byCode($expense->paid_via === 'bank' ? '1010' : '1000')?->id, 'debit' => 0, 'credit' => (float) $expense->amount],
+        ], "Expense {$expense->reference} — {$category?->name}", $expense, $expense->spent_at->toDateString());
+    }
+
+    /** Post the exact opposite of every journal line recorded so far for this expense. */
+    private function reverseJournal(Expense $expense, string $narration): void
+    {
+        $lines = \App\Models\JournalLine::whereHas('entry', fn ($q) => $q
+            ->where('reference_type', $expense->getMorphClass())->where('reference_id', $expense->getKey()))
+            ->get(['account_id', 'debit', 'credit']);
+
+        $net = $lines->groupBy('account_id')->map(fn ($g) => (float) $g->sum('debit') - (float) $g->sum('credit'))
+            ->filter(fn ($v) => round($v, 2) != 0.0);
+        if ($net->isEmpty()) {
+            return;
+        }
+        $this->accounting->post($net->map(fn ($v, $accountId) => [
+            'account_id' => $accountId, 'debit' => $v < 0 ? -$v : 0, 'credit' => $v > 0 ? $v : 0,
+        ])->values()->all(), $narration, $expense, now()->toDateString());
     }
 }

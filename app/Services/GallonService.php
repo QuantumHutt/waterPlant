@@ -28,6 +28,8 @@ class GallonService extends BaseService
                 'type' => $data['type'],
                 'quantity' => (int) ($data['quantity'] ?? 0),
                 'deposit_amount' => (float) ($data['deposit_amount'] ?? 0),
+                'charge_invoice_id' => $data['charge_invoice_id'] ?? null,
+                'loss_value' => (float) ($data['loss_value'] ?? 0),
                 'note' => $data['note'] ?? null,
                 'transacted_at' => $data['transacted_at'] ?? now()->toDateString(),
                 'created_by' => auth()->id(),

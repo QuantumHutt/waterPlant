@@ -57,6 +57,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('customers/{customer}/ledger', [CustomerController::class, 'ledger'])->name('customers.ledger');
     Route::post('customers/{customer}/payment', [CustomerController::class, 'payment'])->name('customers.payment');
     Route::post('customers/{customer}/advance', [CustomerController::class, 'advance'])->name('customers.advance');
+    Route::post('customers/{customer}/bottles', [\App\Http\Controllers\Web\BottleController::class, 'store'])->name('customers.bottles');
 
     // Suppliers
     Route::resource('suppliers', SupplierController::class)->only(['index', 'store', 'update', 'destroy']);
@@ -96,6 +97,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Expenses
     Route::get('expenses', [ExpenseController::class, 'index'])->name('expenses.index');
     Route::post('expenses', [ExpenseController::class, 'store'])->name('expenses.store');
+    Route::put('expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
+    Route::delete('expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
 
     // Employees
     Route::get('employees', [EmployeeController::class, 'index'])->name('employees.index');

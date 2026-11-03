@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GallonTransaction extends Model
 {
-    protected $fillable = ['customer_id', 'type', 'quantity', 'deposit_amount', 'note', 'transacted_at', 'created_by'];
+    protected $fillable = ['customer_id', 'type', 'quantity', 'deposit_amount', 'charge_invoice_id', 'loss_value', 'note', 'transacted_at', 'created_by'];
 
     protected $casts = ['deposit_amount' => 'decimal:2', 'transacted_at' => 'date'];
 
