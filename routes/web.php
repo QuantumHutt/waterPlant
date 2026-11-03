@@ -74,6 +74,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('cash', [\App\Http\Controllers\Web\CashController::class, 'index'])->name('cash.index');
     Route::post('cash/transfer', [\App\Http\Controllers\Web\CashController::class, 'transfer'])->name('cash.transfer');
     Route::post('cash/close', [\App\Http\Controllers\Web\CashController::class, 'close'])->name('cash.close');
+    Route::post('cash/float', [\App\Http\Controllers\Web\CashController::class, 'float'])->name('cash.float');
+    Route::get('cash/hisaab', [\App\Http\Controllers\Web\CashController::class, 'print'])->name('cash.hisaab');
     Route::get('sales', [SaleController::class, 'index'])->name('sales.index');
     Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
     Route::get('sales/{invoice}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');

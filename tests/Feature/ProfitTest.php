@@ -41,10 +41,10 @@ class ProfitTest extends TestCase {
     $inv=$this->sell('SEAL-6000',2,100);
     app(SaleService::class)->returnInvoice($inv->fresh(),'x');
     $customer=\App\Models\Customer::create(['name'=>'C','code'=>'C1','type'=>'retail','is_active'=>true]);
-    $this->sell('19L-NEW',1,1300,['customer_id'=>$customer->id]);   // profit 0
+    $this->sell('19L-NEW',1,1300,['customer_id'=>$customer->id]);   // profit 50
     $p=$this->today();
     $this->assertEquals(1300,$p['revenue']);
-    $this->assertEquals(0,$p['net_profit']);
+    $this->assertEquals(50,$p['net_profit']);
   }
 
   public function test_bill_discount_reduces_profit(){
@@ -52,7 +52,15 @@ class ProfitTest extends TestCase {
     $this->assertEquals(70,$this->today()['net_profit']);
   }
 
-  public function test_refill_without_cost_is_pending_not_profit(){
+  public function test_refill_is_full_profit(){
+    $this->sell('19L-REFILL',4,100,['type'=>'refill']);
+    $this->expense('Electricity',50);
+    $p=$this->today();
+    $this->assertEquals([400,0,400,350],[$p['revenue'],$p['pending_revenue'],$p['gross_profit'],$p['net_profit']]);
+  }
+
+  public function test_product_without_cost_is_pending_not_profit(){
+    Product::find($this->pid('19L-REFILL'))->update(['cost_price'=>null]);
     $this->sell('19L-REFILL',4,100,['type'=>'refill']);
     $this->expense('Electricity',50);
     $p=$this->today();
@@ -105,12 +113,12 @@ class ProfitTest extends TestCase {
     $this->sell('PACK-1500-6',2,300);                  // 2 × 78 = 156 → 12 bottles
     $this->sell('SEAL-6000',3,100);                    // 3 × 45 = 135
     $this->sell('19L-NEW',1,1300);                     // 0
-    $this->sell('19L-REFILL',5,100,['type'=>'refill']); // cost not set
+    $this->sell('19L-REFILL',5,100,['type'=>'refill']); // full profit
     $rows=collect(app(ProfitService::class)->byBottle(now()->toDateString(),now()->toDateString()))->keyBy('label');
     $this->assertEquals([16,4,2,408],[$rows['1.5 Liter Bottle']['bottles'],$rows['1.5 Liter Bottle']['singles'],$rows['1.5 Liter Bottle']['packs'],$rows['1.5 Liter Bottle']['gross_profit']]);
     $this->assertEquals(135,$rows['6 Liter Bottle']['gross_profit']);
-    $this->assertEquals(0,$rows['19L New Bottle']['gross_profit']);
-    $this->assertNull($rows['19 Liter Refill Service']['gross_profit']);
+    $this->assertEquals(50,$rows['19L New Bottle']['gross_profit']);
+    $this->assertEquals(500,$rows['19 Liter Refill Service']['gross_profit']);
     $this->assertEquals(5,$rows['19 Liter Refill Service']['bottles']);
     $this->get(route('dashboard'))->assertInertia(fn($pg)=>$pg->has('profit.bottles_today',4)->has('profit.bottles_month'));
   }

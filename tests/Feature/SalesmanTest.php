@@ -59,7 +59,7 @@ class SalesmanTest extends TestCase {
       ['product_id'=>$c->id,'quantity'=>1,'unit_price'=>20],['product_id'=>$c->id,'quantity'=>1,'unit_price'=>30,'discount'=>5]]])->assertSessionHasNoErrors();
     $inv=Invoice::latest('id')->first();
     $this->assertEquals(50,(float)$inv->grand_total);   // typed amounts kept, discount ignored
-    $this->assertNull($inv->items->first()->unit_cost);
+    $this->assertEquals(0,(float)$inv->items->first()->unit_cost);     // cooler refill = full profit
     $this->assertSame(0,\App\Models\StockItem::where('product_id',$c->id)->count()); // service, no stock
   }
 

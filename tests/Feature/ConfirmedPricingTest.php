@@ -31,13 +31,13 @@ class ConfirmedPricingTest extends TestCase {
     $this->assertEquals([27,324,420],[(float)$this->p('SEAL-500')->cost_price,(float)$this->p('PACK-500-12')->cost_price,(float)$this->p('PACK-500-12')->sale_price]);
     $this->assertEquals([100,50],[(float)$this->p('SEAL-1500')->sale_price,(float)$this->p('SEAL-500')->sale_price]); // single shop prices
     $cooler=$this->p('COOLER-REFILL');
-    $this->assertTrue($cooler->is_manual_price); $this->assertTrue($cooler->is_service); $this->assertNull($cooler->cost_price);
-    $this->assertNull($this->p('19L-REFILL')->cost_price);            // refill cost NOT configured
+    $this->assertTrue($cooler->is_manual_price); $this->assertTrue($cooler->is_service); $this->assertEquals(0,(float)$cooler->cost_price);
+    $this->assertEquals(0,(float)$this->p('19L-REFILL')->cost_price);  // refill: whole amount is profit
     $this->assertEquals(100,(float)$this->p('19L-REFILL')->sale_price);
     $new=$this->p('19L-NEW');
-    $this->assertEquals([1300,1300],[(float)$new->cost_price,(float)$new->sale_price]);
+    $this->assertEquals([1250,1300],[(float)$new->cost_price,(float)$new->sale_price]);
     $this->assertSame($this->p('19L-BOTTLE')->id,$new->pack_of_product_id);
-    $this->assertEquals(1300,(float)$this->p('19L-BOTTLE')->cost_price);
+    $this->assertEquals(1250,(float)$this->p('19L-BOTTLE')->cost_price);
   }
 
   public function test_pricing_seeder_is_idempotent_and_leaves_history_alone(){
@@ -76,17 +76,21 @@ class ConfirmedPricingTest extends TestCase {
     $this->assertEquals(192,$this->row($gp,'PACK-500-12','shop')['gross_profit']); // 2 × 96
   }
 
-  public function test_new_bottle_is_separate_with_zero_profit_and_deducts_company_bottle(){
+  public function test_new_bottle_is_separate_with_50_profit_and_deducts_company_bottle(){
     $this->sell('19L-NEW',1,1300);
     $this->assertSame(99.0,(float)StockItem::where('product_id',$this->p('19L-BOTTLE')->id)->sum('quantity'));
     $gp=$this->gp();
-    $this->assertEquals(0,$this->row($gp,'19L-NEW','shop')['gross_profit']);
+    $this->assertEquals(50,$this->row($gp,'19L-NEW','shop')['gross_profit']);   // 1300 − 1250
     $this->assertNull($this->row($gp,'19L-REFILL','shop'));   // not mixed with refills
   }
 
   public function test_refill_profit_is_pending_not_100_percent(){
+    // Any product with NO cost configured (NULL) stays out of profit — here the refill, with its cost cleared.
+    $this->p('19L-REFILL')->update(['cost_price'=>null]);
     $this->sell('19L-REFILL',5,100,'refill');
     $this->sell('SEAL-6000',1,100);
+    $this->assertNull(InvoiceItem::where('product_id',$this->p('19L-REFILL')->id)->first()->unit_cost);
+    $this->artisan('refills:zero-cost')->assertSuccessful();             // dry run changes nothing
     $this->assertNull(InvoiceItem::where('product_id',$this->p('19L-REFILL')->id)->first()->unit_cost);
     $gp=$this->gp();
     $r=$this->row($gp,'19L-REFILL','shop');
@@ -94,6 +98,8 @@ class ConfirmedPricingTest extends TestCase {
     $this->assertEquals(5,$r['pending_qty']);
     $this->assertEquals(500,$gp['pending_revenue']);
     $this->assertEquals(45,$gp['gross_profit']);              // only the costed 6L line
+    $this->artisan('refills:zero-cost --apply')->assertSuccessful();   // owner's rule: refill = full profit
+    $this->assertEquals(545,$this->gp()['gross_profit']);     // 45 + 5 × 100
   }
 
   public function test_manual_price_and_discounts_reduce_profit(){

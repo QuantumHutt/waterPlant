@@ -19,6 +19,7 @@ class ReportController extends Controller
     public function __construct(
         private readonly AccountingService $accounting,
         private readonly ProfitService $profit,
+        private readonly \App\Services\CashBookService $cash,
     ) {}
 
     public function index(Request $request): Response
@@ -94,6 +95,8 @@ class ReportController extends Controller
                 ->sum('amount'),
             // What customers owe right now (same figure as the dashboard udhaar list).
             'customer_outstanding' => (float) DB::table('customers')->where('current_balance', '>', 0)->sum('current_balance'),
+            // Cash & bank over the period (money view — separate from profit).
+            'cashPeriod' => $request->user()->can('cash.view') ? $this->cash->period($from, $to) : null,
             'profitLoss' => $this->accounting->profitAndLoss($from, $to),
             'grossProfit' => $this->profit->byProduct($from, $to),
             'byBottle' => $this->profit->byBottle($from, $to),

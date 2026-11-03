@@ -87,6 +87,132 @@ class CashBookService extends BaseService
         ];
     }
 
+    /**
+     * Money in / out over a period, per account and kind, plus the bank deposits list with a
+     * running total — answers "is week / mahine kitna bank mein gaya?".
+     *
+     * @return array<string, mixed>
+     */
+    public function period(string $from, string $to): array
+    {
+        $moves = $this->movements($from, $to);
+        $out = [];
+        foreach (['cash', 'bank'] as $account) {
+            $mine = $moves->where('account', $account);
+            $lines = $mine->groupBy(fn ($m) => $m['kind'].'|'.$m['direction'])
+                ->map(fn ($g) => ['kind' => $g[0]['kind'], 'direction' => $g[0]['direction'], 'label' => $g[0]['label'], 'amount' => round((float) $g->sum('amount'), 2)])
+                ->sortBy(fn ($l) => $l['direction'] === 'in' ? 0 : 1)->values();
+            $out[$account] = [
+                'opening' => $this->balance($account, $from),
+                'in' => round((float) $mine->where('direction', 'in')->sum('amount'), 2),
+                'out' => round((float) $mine->where('direction', 'out')->sum('amount'), 2),
+                'lines' => $lines,
+            ];
+            $out[$account]['closing'] = round($out[$account]['opening'] + $out[$account]['in'] - $out[$account]['out'], 2);
+        }
+
+        $running = 0.0;
+        $deposits = CashTransfer::where('to_account', 'bank')->whereBetween('transfer_date', [$from, $to])
+            ->orderBy('transfer_date')->orderBy('id')->get()
+            ->map(function (CashTransfer $t) use (&$running) {
+                $running = round($running + (float) $t->amount, 2);
+
+                return ['date' => $t->transfer_date->toDateString(), 'amount' => (float) $t->amount, 'note' => $t->note, 'reference' => $t->reference, 'running' => $running];
+            })->values();
+
+        return $out + [
+            'from' => $from,
+            'to' => $to,
+            'deposits' => $deposits,
+            'deposited_total' => round((float) $deposits->sum('amount'), 2),
+            'withdrawn_total' => round((float) CashTransfer::where('to_account', 'cash')->whereBetween('transfer_date', [$from, $to])->sum('amount'), 2),
+        ];
+    }
+
+    /**
+     * "Hisaab": everything in the drawer since the last bank deposit, and what to bank now.
+     * Period = day after the last deposit on/before $to → $to (first day of records if none).
+     *
+     * @return array<string, mixed>
+     */
+    public function hisaab(?string $to = null): array
+    {
+        $to = $to ?? now()->toDateString();
+        $last = CashTransfer::where('to_account', 'bank')->where('transfer_date', '<=', $to)->orderByDesc('transfer_date')->orderByDesc('id')->first();
+        $from = $last ? $last->transfer_date->toDateString() : '1900-01-01';
+        $float = (float) (Setting::get('cash', 'drawer_float') ?? 0);
+
+        // Cash movements after the last deposit (same day: only those recorded after it).
+        $moves = $this->movements($from, $to)->where('account', 'cash')
+            ->filter(fn ($m) => ! $last || $m['date'] > $from || ($m['date'] === $from && $m['time'] > (string) $last->created_at));
+        $lines = $moves->groupBy(fn ($m) => $m['kind'].'|'.$m['direction'])
+            ->map(fn ($g) => ['kind' => $g[0]['kind'], 'direction' => $g[0]['direction'], 'label' => $g[0]['label'], 'amount' => round((float) $g->sum('amount'), 2)])
+            ->sortBy(fn ($l) => $l['direction'] === 'in' ? 0 : 1)->values();
+
+        $drawerNow = $this->day($to)['cash']['closing'];
+        $in = round((float) $moves->where('direction', 'in')->sum('amount'), 2);
+        $out = round((float) $moves->where('direction', 'out')->sum('amount'), 2);
+
+        return [
+            'since' => $last?->transfer_date->toDateString(),           // null = never deposited yet
+            'last_deposit' => $last ? ['amount' => (float) $last->amount, 'note' => $last->note] : null,
+            'opening' => round($drawerNow - $in + $out, 2),                // what was left in the drawer after the last deposit
+            'lines' => $lines,
+            'in' => $in,
+            'out' => $out,
+            'drawer_now' => $drawerNow,
+            'float' => $float,
+            'suggested_deposit' => round(max(0.0, $drawerNow - $float), 2),
+        ];
+    }
+
+    /**
+     * Every settlement so far, newest first: the period it covered, cash in / out in that
+     * period, what was banked and what stayed in the drawer.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function hisaabHistory(int $limit = 30): array
+    {
+        $deposits = CashTransfer::where('to_account', 'bank')->orderBy('transfer_date')->orderBy('id')->get();
+        $all = $this->movements('1900-01-01', now()->toDateString())->where('account', 'cash');
+        $rows = [];
+        $prev = null;
+        $running = (float) (Setting::get('cash', 'opening_cash') ?? 0);   // drawer balance as we walk forward
+
+        foreach ($deposits as $d) {
+            $period = $all->filter(function ($m) use ($prev, $d) {
+                $afterPrev = ! $prev || $m['date'] > $prev->transfer_date->toDateString()
+                    || ($m['date'] === $prev->transfer_date->toDateString() && $m['time'] > (string) $prev->created_at);
+                $upToThis = $m['date'] < $d->transfer_date->toDateString()
+                    || ($m['date'] === $d->transfer_date->toDateString() && $m['time'] <= (string) $d->created_at);
+
+                return $afterPrev && $upToThis && $m['reference'] !== $d->reference;
+            });
+            $in = round((float) $period->where('direction', 'in')->sum('amount'), 2);
+            $out = round((float) $period->where('direction', 'out')->sum('amount'), 2);
+            $before = round($running + $in - $out, 2);
+            $running = round($before - (float) $d->amount, 2);
+            $rows[] = [
+                'from' => $prev?->transfer_date->toDateString(),
+                'to' => $d->transfer_date->toDateString(),
+                'reference' => $d->reference,
+                'note' => $d->note,
+                'sales' => round((float) $period->where('kind', 'sale')->sum('amount'), 2),
+                'udhaar' => round((float) $period->whereIn('kind', ['udhaar', 'advance', 'bottle_deposit'])->sum('amount'), 2),
+                'expenses' => round((float) $period->whereIn('kind', ['expense', 'supplier', 'refund', 'deposit_refund'])->sum('amount'), 2),
+                'in' => $in,
+                'out' => $out,
+                'drawer_before' => $before,
+                'deposited' => (float) $d->amount,
+                'kept' => $running,
+            ];
+            $prev = $d;
+        }
+
+        return array_slice(array_reverse($rows), 0, $limit);
+    }
+
     /** Balance of an account at the START of $date (everything before it + opening setting). */
     public function balance(string $account, string $date): float
     {

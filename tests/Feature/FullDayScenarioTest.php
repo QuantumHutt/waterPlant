@@ -24,7 +24,6 @@ class FullDayScenarioTest extends TestCase {
     foreach([RolePermissionSeeder::class,SettingSeeder::class,WarehouseSeeder::class,ProductSeeder::class,OpeningStockSeeder::class,ChartOfAccountsSeeder::class,ExpenseSetupSeeder::class] as $s) $this->seed($s);
     $today=now()->toDateString(); $wh=$this->wh();
     Setting::set('cash','opening_cash',5000,'int'); Setting::set('cash','opening_bank',5000,'int');
-    Product::where('sku','19L-REFILL')->update(['cost_price'=>0]);   // owner set refill cost = 0 (costs are in expenses)
 
     // ---- Morning: owner buys empties + caps, fills 60 × 1.5L ----
     $this->as(RoleName::Admin);
@@ -66,6 +65,7 @@ class FullDayScenarioTest extends TestCase {
     $this->assertEquals(3,$ss['19L-REFILL']['today_qty']);
     $bt=collect($d['profit']['bottles_today'])->keyBy('label');
     $this->assertEquals([7,165],[$bt['6 Liter Bottle']['bottles'],$bt['6 Liter Bottle']['gross_profit']]);          // 2×45 + 5×15
+    $this->assertEquals([2,90,5,75],[$bt['6 Liter Bottle']['shop_bottles'],$bt['6 Liter Bottle']['shop_profit'],$bt['6 Liter Bottle']['market_bottles'],$bt['6 Liter Bottle']['market_profit']]);
     $this->assertEquals([6,112.5],[$bt['1.5 Liter Bottle']['bottles'],$bt['1.5 Liter Bottle']['gross_profit']]);   // 300 − 187.5
     $this->assertEquals([3,300],[$bt['19 Liter Refill Service']['bottles'],$bt['19 Liter Refill Service']['gross_profit']]);
 

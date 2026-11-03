@@ -10,7 +10,7 @@ import ProfitBreakdown from '@/Components/Profit/ProfitBreakdown.vue'
 import BottleProfit from '@/Components/Profit/BottleProfit.vue'
 import { ShoppingCart, FlaskConical, Boxes, PiggyBank } from 'lucide-vue-next'
 
-const props = defineProps({ filters: Object, sales: Object, production: Object, inventory: Object, bottles: Object, profitLoss: Object, grossProfit: Object, byBottle: Array, purchases: Object, udhaar_collected: Number, customer_outstanding: Number, pnl: Object, daily: Array, monthly: Array, topProducts: Array })
+const props = defineProps({ filters: Object, sales: Object, production: Object, inventory: Object, bottles: Object, profitLoss: Object, grossProfit: Object, byBottle: Array, purchases: Object, udhaar_collected: Number, customer_outstanding: Number, cashPeriod: Object, pnl: Object, daily: Array, monthly: Array, topProducts: Array })
 const { format } = useCurrency()
 
 const from = ref(props.filters.from)
@@ -73,6 +73,29 @@ function apply() { router.get(route('reports.index'), { from: from.value, to: to
                 </div>
             </Card>
         </div>
+
+        <Card v-if="cashPeriod" class="mt-4" title="Cash &amp; Bank (selected dates) — paisa kahan gaya">
+            <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div v-for="a in ['cash', 'bank']" :key="a" class="rounded-2xl p-4 ring-1" :class="a === 'cash' ? 'bg-success/5 ring-success/20' : 'bg-brand/5 ring-brand/20'">
+                    <p class="text-sm font-semibold">{{ a === 'cash' ? '💵 Cash drawer' : '🏦 Bank' }}</p>
+                    <div class="mt-2 space-y-1 text-sm">
+                        <div class="flex justify-between text-muted-foreground"><span>Shuru mein</span><span>{{ format(cashPeriod[a].opening) }}</span></div>
+                        <div v-for="l in cashPeriod[a].lines" :key="l.kind + l.direction" class="flex justify-between">
+                            <span :class="l.direction === 'in' ? 'text-success' : 'text-destructive'">{{ l.direction === 'in' ? '+' : '−' }} {{ a === 'bank' && l.kind === 'deposit' ? 'Cash se jama' : (a === 'bank' && l.kind === 'withdrawal' ? 'Cash mein nikaala' : l.label) }}</span><span>{{ format(l.amount) }}</span>
+                        </div>
+                        <div class="flex justify-between border-t border-border pt-1 font-semibold"><span>Aakhir mein</span><span>{{ format(cashPeriod[a].closing) }}</span></div>
+                    </div>
+                </div>
+                <div class="rounded-2xl bg-muted/40 p-4 ring-1 ring-border">
+                    <p class="text-sm font-semibold">Bank mein jama (in dates mein)</p>
+                    <p class="mt-1 text-3xl font-bold text-brand">{{ format(cashPeriod.deposited_total) }}</p>
+                    <p class="text-xs text-muted-foreground">{{ cashPeriod.deposits.length }} deposit(s)<template v-if="cashPeriod.withdrawn_total"> · nikaala {{ format(cashPeriod.withdrawn_total) }}</template></p>
+                    <ul class="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs text-muted-foreground">
+                        <li v-for="d in cashPeriod.deposits" :key="d.reference" class="flex justify-between"><span>{{ d.date }} {{ d.note ? `· ${d.note}` : '' }}</span><span>{{ format(d.amount) }}</span></li>
+                    </ul>
+                </div>
+            </div>
+        </Card>
 
         <Card class="mt-4" title="Monthly Profit (last 12 months)"><ProfitBreakdown :rows="monthly" label="Month" /></Card>
 

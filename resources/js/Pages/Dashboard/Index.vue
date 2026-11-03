@@ -1,5 +1,8 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, useForm } from '@inertiajs/vue3'
+import { computed } from 'vue'
+import Modal from '@/Components/Modal.vue'
+import { usePermissions } from '@/composables/usePermissions'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import StatCard from '@/Components/StatCard.vue'
 import Card from '@/Components/ui/Card.vue'
@@ -17,10 +20,32 @@ const props = defineProps({
     receivables: { type: Object, default: () => ({ rows: [], count: 0, total: 0, total_display: 'Rs 0.00' }) },
     profit: { type: Object, default: null }, // null when the user can't see reports
     stockSales: { type: Array, default: () => [] },
+    cashToday: { type: Object, default: null },
 })
 
 const { format } = useCurrency()
 const bottleTab = ref('today')
+const { can } = usePermissions()
+
+// Deposit cash to bank from the dashboard: type the amount, see what stays in the drawer.
+const showDeposit = ref(false)
+const deposit = useForm({ direction: 'deposit', amount: null, note: '' })
+// Two linked boxes: type in either — bank + cash always = what's in the drawer now.
+const drawerNow = computed(() => Number(props.cashToday?.drawer ?? 0))
+const keepCash = ref(null)
+function fromBank(v) { deposit.amount = v; keepCash.value = v === null || v === '' ? null : Math.max(0, Math.round((drawerNow.value - Number(v)) * 100) / 100) }
+function fromCash(v) { keepCash.value = v; deposit.amount = v === null || v === '' ? null : Math.max(0, Math.round((drawerNow.value - Number(v)) * 100) / 100) }
+function submitDeposit() {
+    deposit.post(route('cash.transfer'), { preserveScroll: true, preserveState: true, onSuccess: () => { deposit.reset(); showDeposit.value = false } })
+}
+
+// Receive udhaar straight from the list — amount can't exceed what they owe.
+const collectFor = ref(null)
+const collect = useForm({ amount: null, method: 'cash', note: '' })
+function openCollect(c) { collectFor.value = c; collect.reset(); collect.clearErrors(); collect.amount = c.balance }
+function submitCollect() {
+    collect.post(route('customers.payment', collectFor.value.id), { preserveScroll: true, preserveState: true, onSuccess: () => (collectFor.value = null) })
+}
 
 const cards = [
     { key: 'todays_sales', icon: ShoppingCart, tone: 'success' },
@@ -54,6 +79,51 @@ const cards = [
                 :tone="c.tone"
             />
         </div>
+
+        <!-- Cash today: drawer, bank, deposit -->
+        <Card v-if="cashToday" class="mt-4">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex flex-wrap gap-6">
+                    <div><p class="text-xs text-muted-foreground">Drawer mein hona chahiye (cash)</p><p class="text-2xl font-bold text-success">{{ format(cashToday.drawer) }}</p><p v-if="cashToday.since" class="text-[11px] text-muted-foreground">last deposit {{ cashToday.since }}</p></div>
+                    <div><p class="text-xs text-muted-foreground">Bank balance</p><p class="text-2xl font-bold text-brand">{{ format(cashToday.bank) }}</p></div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button v-if="can('cash.transfer') && cashToday.suggested > 0" type="button" @click="showDeposit = true; fromBank(String(cashToday.suggested))"
+                        class="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+                        Hisaab: {{ format(cashToday.suggested) }} bank mein, {{ format(cashToday.float) }} change →
+                    </button>
+                    <button v-if="can('cash.transfer')" type="button" @click="showDeposit = !showDeposit; deposit.amount = null; keepCash = null"
+                        class="rounded-full bg-muted px-4 py-2.5 text-sm font-semibold hover:bg-muted/70">Other amount</button>
+                    <Link v-if="can('cash.close')" :href="route('cash.index')" class="rounded-full bg-warning/15 px-5 py-2.5 text-sm font-semibold text-warning hover:bg-warning/25">
+                        {{ cashToday.closed ? 'Day closed ✓' : 'Din close karein' }}
+                    </Link>
+                </div>
+            </div>
+            <div v-if="showDeposit" class="mt-4 rounded-2xl bg-brand/5 p-4 ring-1 ring-brand/20">
+                <p class="mb-3 text-sm">Drawer mein abhi <b>{{ format(cashToday.drawer) }}</b> hai — isko baantein. Koi ek box likhein, doosra khud bharega.</p>
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:max-w-lg">
+                    <label class="block rounded-xl bg-card p-3 ring-2 ring-brand/40">
+                        <span class="text-xs font-bold uppercase tracking-wide text-brand">🏦 Bank mein jama</span>
+                        <input :value="deposit.amount" @input="fromBank($event.target.value)" type="number" min="0" :max="cashToday.drawer" placeholder="Bank mein kitne? e.g. 5000"
+                            class="mt-1 w-full rounded-lg border-border bg-background text-xl font-bold focus:border-brand focus:ring-brand" />
+                    </label>
+                    <label class="block rounded-xl bg-card p-3 ring-2 ring-success/40">
+                        <span class="text-xs font-bold uppercase tracking-wide text-success">💵 Cash mein (drawer)</span>
+                        <input :value="keepCash" @input="fromCash($event.target.value)" type="number" min="0" :max="cashToday.drawer" placeholder="Drawer mein kitne rahenge? e.g. 500"
+                            class="mt-1 w-full rounded-lg border-border bg-background text-xl font-bold focus:border-success focus:ring-success" />
+                    </label>
+                </div>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <input v-model="deposit.note" placeholder="Bank slip no. (optional)" class="w-48 rounded-xl border-border bg-background text-sm focus:border-brand focus:ring-brand" />
+                    <button type="button" @click="submitDeposit" :disabled="deposit.processing || !(deposit.amount > 0)"
+                        class="rounded-xl bg-brand px-6 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+                        {{ deposit.amount > 0 ? `${format(deposit.amount)} bank mein jama karein` : 'Bank mein jama karein' }}
+                    </button>
+                    <button type="button" @click="showDeposit = false" class="px-3 text-sm text-muted-foreground">Cancel</button>
+                </div>
+                <p v-if="deposit.errors.amount" class="mt-2 text-xs text-destructive">{{ deposit.errors.amount }}</p>
+            </div>
+        </Card>
 
         <!-- Stock & Sales: what sold today / this month and what is left -->
         <Card class="mt-4" title="Stock &amp; Sales">
@@ -162,7 +232,8 @@ const cards = [
                                 </td>
                                 <td class="py-2 pr-4 text-right font-semibold text-warning">{{ c.display }}</td>
                                 <td class="py-2 pr-0 text-right">
-                                    <Link :href="route('customers.ledger', c.id)" class="rounded-full bg-brand/10 text-brand px-3 py-1 text-xs font-medium hover:bg-brand/20">View / Collect</Link>
+                                    <button v-if="can('customers.collect')" type="button" @click="openCollect(c)" class="mr-1 rounded-full bg-success px-3 py-1 text-xs font-semibold text-white hover:opacity-90">Collect</button>
+                                    <Link :href="route('customers.ledger', c.id)" class="rounded-full bg-brand/10 text-brand px-3 py-1 text-xs font-medium hover:bg-brand/20">Ledger</Link>
                                 </td>
                             </tr>
                             <tr v-if="!receivables.rows.length"><td colspan="5" class="py-6 text-center text-success">🎉 Sab clear — kisi ka udhaar baqaya nahi.</td></tr>
@@ -192,5 +263,25 @@ const cards = [
                 </li>
             </ul>
         </Card>
+
+        <!-- Receive udhaar -->
+        <Modal :show="!!collectFor" @close="collectFor = null" max-width="md">
+            <form v-if="collectFor" @submit.prevent="submitCollect" class="space-y-3 p-6">
+                <h3 class="text-lg font-semibold">Receive Udhaar — {{ collectFor.name }}</h3>
+                <p class="text-sm text-muted-foreground">Owes {{ collectFor.display }}. Oldest bills are settled first.</p>
+                <div class="flex gap-2">
+                    <input v-model.number="collect.amount" type="number" min="1" :max="collectFor.balance" class="flex-1 rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand" />
+                    <select v-model="collect.method" class="rounded-md border-border bg-background text-sm focus:border-brand focus:ring-brand">
+                        <option value="cash">Cash</option><option value="bank">Bank / Easypaisa</option><option value="cheque">Cheque</option>
+                    </select>
+                </div>
+                <button type="button" @click="collect.amount = collectFor.balance" class="text-xs font-semibold text-brand underline">Full {{ collectFor.display }}</button>
+                <p v-if="collect.errors.amount" class="text-xs text-destructive">{{ collect.errors.amount }}</p>
+                <div class="flex justify-end gap-2">
+                    <button type="button" @click="collectFor = null" class="rounded-full px-4 py-2 text-sm">Cancel</button>
+                    <button type="submit" :disabled="collect.processing || !(collect.amount > 0)" class="rounded-full bg-success px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">Receive</button>
+                </div>
+            </form>
+        </Modal>
     </AppLayout>
 </template>

@@ -49,6 +49,7 @@ class SettingSeeder extends Seeder
             'cash' => [
                 'opening_cash' => 0,   // drawer cash on the day the system started
                 'opening_bank' => 0,   // bank balance on the day the system started
+                'drawer_float' => 500, // change money kept in the drawer at every hisaab (rest goes to bank)
             ],
             'sales' => [
                 'water_product_sku' => 'WATER-BULK',  // bulk water stock that refills draw down

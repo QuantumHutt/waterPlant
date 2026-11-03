@@ -23,9 +23,16 @@ class CashController extends Controller
         abort_unless($request->user()->can('cash.view'), 403);
         $date = $request->input('date', now()->toDateString());
 
+        $monthStart = \Illuminate\Support\Carbon::parse($date)->startOfMonth()->toDateString();
+
         return Inertia::render('Cash/Index', [
             'date' => $date,
             'day' => $this->cash->day($date),
+            // This month so far: deposits list + totals ("kitna bank mein gaya").
+            'month' => $this->cash->period($monthStart, $date),
+            // Settlement view: since the last deposit, what's in the drawer, what to bank now.
+            'hisaab' => $this->cash->hisaab($date),
+            'history' => $this->cash->hisaabHistory(),
             'closings' => CashClosing::with('closer:id,name')->latest('closing_date')->limit(30)->get(),
         ]);
     }
@@ -54,6 +61,30 @@ class CashController extends Controller
         return back()->with('success', $data['direction'] === 'deposit'
             ? '✓ '.Money::format((float) $data['amount']).' bank mein jama — drawer se minus'
             : '✓ '.Money::format((float) $data['amount']).' bank se nikal kar drawer mein');
+    }
+
+    /** Change money kept in the drawer at every hisaab. */
+    public function float(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->can('cash.transfer'), 403);
+        $data = $request->validate(['float' => ['required', 'numeric', 'min:0']]);
+        \App\Models\Setting::set('cash', 'drawer_float', (int) $data['float'], 'int');
+
+        return back()->with('success', '✓ Drawer float set to '.Money::format((float) $data['float']));
+    }
+
+    /** Printable hisaab slip for one settlement period. */
+    public function print(Request $request): \Illuminate\View\View
+    {
+        abort_unless($request->user()->can('cash.view'), 403);
+        $to = $request->input('to', now()->toDateString());
+
+        return view('cash.hisaab', [
+            'hisaab' => $this->cash->hisaab($to),
+            'to' => $to,
+            'company' => \App\Models\Setting::allGrouped()['company'] ?? [],
+            'user' => $request->user()->name,
+        ]);
     }
 
     /** End of day: count the drawer and save it against what the system expects. */

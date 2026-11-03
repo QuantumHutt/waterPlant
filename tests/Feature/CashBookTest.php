@@ -30,6 +30,62 @@ class CashBookTest extends TestCase {
     $this->post(route('cash.transfer'),['direction'=>'deposit','amount'=>500])->assertSessionHasErrors('amount'); // only 200 left
   }
 
+  public function test_daily_deposits_add_up_over_the_month(){
+    $this->as(RoleName::Admin);
+    $this->travelTo(now()->startOfMonth()->addDays(1));
+    $this->sell(55);                                                                   // 5500
+    $this->post(route('cash.transfer'),['direction'=>'deposit','amount'=>5000,'note'=>'slip 1']);
+    $this->travel(1)->days();
+    $this->sell(30);                                                                   // 3000
+    $this->post(route('cash.transfer'),['direction'=>'deposit','amount'=>2500,'note'=>'slip 2']);
+    $this->travel(1)->days();
+    $this->post(route('cash.transfer'),['direction'=>'withdraw','amount'=>700]);       // took 700 out for wages
+    $m=app(CashBookService::class)->period(now()->startOfMonth()->toDateString(),now()->toDateString());
+    $this->assertEquals([7500,700],[$m['deposited_total'],$m['withdrawn_total']]);
+    $this->assertEquals([5000,7500],[$m['deposits'][0]['running'],$m['deposits'][1]['running']]);
+    $this->assertEquals(6800,$m['bank']['closing']);                                   // 7500 − 700
+    $this->assertEquals(1700,$m['cash']['closing']);                                   // 8500 − 7500 + 700
+    $this->get(route('cash.index'))->assertOk()->assertInertia(fn($pg)=>$pg->where('month.deposited_total',7500));
+    $this->get(route('reports.index',['from'=>now()->startOfMonth()->toDateString(),'to'=>now()->toDateString()]))->assertOk()
+      ->assertInertia(fn($pg)=>$pg->where('cashPeriod.deposited_total',7500)->where('cashPeriod.bank.closing',6800));
+  }
+
+  public function test_hisaab_flow_bank_big_amount_keep_float(){
+    $this->as(RoleName::Admin);
+    \App\Models\Setting::set('cash','drawer_float',500,'int');
+    $this->travelTo(now()->startOfMonth()->addDays(1)); $d1=now()->toDateString();
+    $this->sell(55);                                                                   // 5500 cash
+    $this->post(route('expenses.store'),['category_id'=>ExpenseCategory::where('name','Electricity')->value('id'),'amount'=>200,'paid_via'=>'cash']);
+    $h=app(CashBookService::class)->hisaab();
+    $this->assertNull($h['since']);
+    $this->assertEquals([5300,500,4800],[$h['drawer_now'],$h['float'],$h['suggested_deposit']]);
+    $this->get(route('dashboard'))->assertInertia(fn($pg)=>$pg->where('cashToday.suggested',4800)->where('cashToday.float',500));
+    $this->post(route('cash.transfer'),['direction'=>'deposit','amount'=>4800,'note'=>'slip A'])->assertSessionHasNoErrors();   // first hisaab
+
+    $this->travel(2)->days(); $d2=now()->toDateString();                               // two days later, next hisaab
+    $this->sell(20);                                                                   // 2000
+    $c=Customer::create(['code'=>'C1','name'=>'Shop','type'=>'wholesale','current_balance'=>0,'is_active'=>true]);
+    $this->sell(3,['customer_id'=>$c->id,'paid_total'=>0]);
+    $this->post(route('customers.payment',$c),['amount'=>300,'method'=>'cash']);       // udhaar 300
+    $h=app(CashBookService::class)->hisaab();
+    $this->assertEquals($d1,$h['since']);
+    $this->assertEquals(500,$h['opening']);                                            // the float left last time
+    $this->assertEquals([2800,2300],[$h['drawer_now'],$h['suggested_deposit']]);
+    $lines=collect($h['lines'])->keyBy('kind');
+    $this->assertEquals([2000,300],[$lines['sale']['amount'],$lines['udhaar']['amount']]);
+    $this->post(route('cash.float'),['float'=>800])->assertSessionHasNoErrors();        // keep more change from now
+    $this->assertEquals(2000,app(CashBookService::class)->hisaab()['suggested_deposit']);
+    $this->post(route('cash.transfer'),['direction'=>'deposit','amount'=>2000,'note'=>'slip B']);
+
+    $hist=app(CashBookService::class)->hisaabHistory();
+    $this->assertCount(2,$hist);
+    $this->assertEquals([$d1,$d2,2000,300,0,2800,2000,800],[$hist[0]['from'],$hist[0]['to'],$hist[0]['sales'],$hist[0]['udhaar'],$hist[0]['expenses'],$hist[0]['drawer_before'],$hist[0]['deposited'],$hist[0]['kept']]);
+    $this->assertEquals([null,$d1,5500,200,5300,4800,500],[$hist[1]['from'],$hist[1]['to'],$hist[1]['sales'],$hist[1]['expenses'],$hist[1]['drawer_before'],$hist[1]['deposited'],$hist[1]['kept']]);
+    $this->get(route('cash.index'))->assertOk()->assertInertia(fn($pg)=>$pg->where('hisaab.drawer_now',800)->has('history',2));
+    $this->get(route('cash.hisaab',['to'=>$d2]))->assertOk()->assertSee('Hisaab');
+    $this->assertEquals(6800,app(CashBookService::class)->day($d2)['bank']['closing']);
+  }
+
   public function test_drawer_counts_sales_udhaar_advance_expenses_and_supplier(){
     $this->as(RoleName::Admin);
     $c=Customer::create(['code'=>'C1','name'=>'Shop','type'=>'wholesale','current_balance'=>0,'is_active'=>true]);

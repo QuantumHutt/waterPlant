@@ -39,7 +39,7 @@ class BottleFlowsTest extends TestCase {
     $this->bottle(['action'=>'missing','quantity'=>1])->assertSessionHas('success');
     $this->assertEquals(2,$this->held());
     $p=app(ProfitService::class)->summary($this->today(),$this->today());
-    $this->assertEquals(1300,$p['stock_loss']);
+    $this->assertEquals(1250,$p['stock_loss']);                                               // bottle cost
     $this->assertEquals(97,$this->shop());                                                    // stock unchanged — bottle was already out
   }
 
@@ -49,11 +49,11 @@ class BottleFlowsTest extends TestCase {
     $this->assertSame(['paid',1300.0],[$inv->status,(float)$inv->grand_total]);
     $p=app(ProfitService::class)->summary($this->today(),$this->today());
     $this->assertEquals(0,$p['stock_loss']);                                                  // charged → no loss
-    $this->assertEquals(1300+500,app(CashBookService::class)->day($this->today())['cash']['closing']);
+    $this->assertEquals(1300+500,app(CashBookService::class)->day($this->today())['cash']['closing']);   // cash = what was charged
     $this->bottle(['action'=>'missing','quantity'=>1,'charge_by'=>'udhaar','price'=>1000])->assertSessionHas('success');
     $this->assertEquals(1000,(float)$this->c->fresh()->current_balance);
-    // 1300 charged at cost 1300 → 0; 1000 charged at cost 1300 → −300 (refills have no cost yet)
-    $this->assertEquals(-300,app(ProfitService::class)->summary($this->today(),$this->today())['gross_profit']);
+    // 5 refills × 100 = 500 · 1300 charged at cost 1250 → +50 · 1000 charged at cost 1250 → −250
+    $this->assertEquals(300,app(ProfitService::class)->summary($this->today(),$this->today())['gross_profit']);
     $this->assertEquals(1,$this->held());
   }
 

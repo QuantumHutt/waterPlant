@@ -20,6 +20,7 @@ use Illuminate\Support\Str;
  *
  * sale_price = own shop / walk-in price · wholesale_price = market price (shop customers)
  * cost_price = NULL means the cost is not configured yet → profit reported as pending.
+ * Refills (19L / cooler) are cost 0 by the owner's rule: the full amount is profit.
  */
 class ProductSeeder extends Seeder
 {
@@ -111,7 +112,8 @@ class ProductSeeder extends Seeder
             'track_inventory' => true,
         ]);
 
-        // 5. 19L REFILL — service; deducts 19 L bulk water. Production cost not confirmed yet.
+        // 5. 19L REFILL — service. Owner's rule: the whole amount is profit (plant costs such as
+        //    electricity / filters are entered as expenses), so cost = 0.
         $this->product('19L-REFILL', [
             'category_id' => $cat['service']->id,
             'name' => '19 Liter Refill Service',
@@ -119,12 +121,12 @@ class ProductSeeder extends Seeder
             'is_service' => true,
             'unit' => ProductUnit::Pcs->value,
             'water_litres' => 19,
-            'cost_price' => null,
+            'cost_price' => 0,
             'sale_price' => 100,
             'track_inventory' => false,
         ]);
 
-        // 6. COOLER REFILL — service; amount typed in per sale (20, 30, …). Cost not configured.
+        // 6. COOLER REFILL — service; amount typed in per sale (20, 30, …). Whole amount is profit.
         $this->product('COOLER-REFILL', [
             'category_id' => $cat['service']->id,
             'name' => 'Cooler Refill',
@@ -133,25 +135,25 @@ class ProductSeeder extends Seeder
             'is_manual_price' => true,
             'unit' => ProductUnit::Pcs->value,
             'water_litres' => 0,     // cooler sizes vary — no fixed bulk-water deduction
-            'cost_price' => null,
+            'cost_price' => 0,
             'sale_price' => 0,
             'track_inventory' => false,
         ]);
 
-        // 7. Company 19L EMPTY BOTTLE — the physical bottle stock (cost 1300). Not sold directly.
+        // 7. Company 19L EMPTY BOTTLE — the physical bottle stock (bought at 1250). Not sold directly.
         $bottle = $this->product('19L-BOTTLE', [
             'category_id' => $cat['bottle']->id,
             'name' => '19L Bottle (Company)',
             'type' => ProductType::Consumable->value,
             'unit' => ProductUnit::Pcs->value,
             'water_litres' => 0,
-            'cost_price' => 1300,
+            'cost_price' => 1250,
             'sale_price' => 0,             // issued on deposit / sold via 19L-NEW below
             'reorder_level' => 20,
             'track_inventory' => true,
         ]);
 
-        // 8. 19L NEW BOTTLE — sold outright at cost (1300 → profit 0); deducts 1 company bottle.
+        // 8. 19L NEW BOTTLE — bought 1250, sold 1300 → profit 50; deducts 1 company bottle.
         $this->product('19L-NEW', [
             'category_id' => $cat['bottle']->id,
             'name' => '19L New Bottle',
@@ -161,14 +163,14 @@ class ProductSeeder extends Seeder
             'pack_size' => 1,
             'pack_of_product_id' => $bottle->id,
             'water_litres' => 0,     // bottle only — water is sold as a separate refill line
-            'cost_price' => 1300,
+            'cost_price' => 1250,
             'sale_price' => 1300,
             'reorder_level' => 0,
             'track_inventory' => false, // stock lives on 19L-BOTTLE
         ]);
 
         // 8b. LOST / BROKEN 19L BOTTLE CHARGE — billed to the customer. Cost = bottle cost,
-        //     so charging the full 1300 is profit 0 (the bottle's value comes back).
+        //     so charging 1300 for a lost bottle gives the same 50 profit as selling one.
         $this->product('BOTTLE-CHARGE', [
             'category_id' => $cat['service']->id,
             'name' => '19L Bottle Lost / Broken Charge',
@@ -177,7 +179,7 @@ class ProductSeeder extends Seeder
             'is_manual_price' => true,
             'unit' => ProductUnit::Pcs->value,
             'water_litres' => 0,
-            'cost_price' => 1300,
+            'cost_price' => 1250,
             'sale_price' => 0,          // not on the POS grid — charged from the bottle panel
             'track_inventory' => false,
         ]);

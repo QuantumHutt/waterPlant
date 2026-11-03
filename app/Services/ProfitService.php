@@ -142,6 +142,7 @@ class ProfitService
     public function byBottle(string $from, string $to): array
     {
         $label = 'CASE WHEN base.sale_price > 0 THEN base.name ELSE products.name END';
+        $rev = self::REVENUE;
 
         return $this->salesLines($from, $to)
             ->join('products', 'products.id', '=', 'invoice_items.product_id')
@@ -152,11 +153,18 @@ class ProfitService
                 SUM((invoice_items.quantity - invoice_items.returned_qty) * CASE WHEN products.pack_of_product_id IS NULL THEN 1 ELSE products.pack_size END) as bottles,
                 SUM(CASE WHEN products.pack_of_product_id IS NULL THEN (invoice_items.quantity - invoice_items.returned_qty) ELSE 0 END) as singles,
                 SUM(CASE WHEN products.pack_of_product_id IS NULL THEN 0 ELSE (invoice_items.quantity - invoice_items.returned_qty) END) as packs,
-                MAX(products.is_service) as is_service, "
+                MAX(products.is_service) as is_service,
+                SUM(CASE WHEN invoices.type = 'wholesale' THEN (invoice_items.quantity - invoice_items.returned_qty) * CASE WHEN products.pack_of_product_id IS NULL THEN 1 ELSE products.pack_size END ELSE 0 END) as market_bottles,
+                SUM(CASE WHEN invoices.type = 'wholesale' AND invoice_items.unit_cost IS NOT NULL THEN {$rev} - (invoice_items.quantity - invoice_items.returned_qty) * invoice_items.unit_cost ELSE 0 END) as market_profit, "
                 .$this->salesColumns())
             ->get()
             ->map(fn ($r) => [
                 'label' => $r->label,
+                // Shop (own counter / walk-in) vs market (shop customers) — different prices, different profit.
+                'market_bottles' => (float) $r->market_bottles,
+                'market_profit' => round((float) $r->market_profit, 2),
+                'shop_bottles' => (float) $r->bottles - (float) $r->market_bottles,
+                'shop_profit' => round((float) $r->costed_revenue - (float) $r->cogs - (float) $r->market_profit, 2),
                 'bottles' => (float) $r->bottles,
                 'singles' => (float) $r->singles,
                 'packs' => (float) $r->packs,

@@ -40,7 +40,7 @@ function internalUseFree() {
         warehouse_id: form.warehouse_id,
         reason: 'Owner internal use (POS)',
         items: form.items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })),
-    }, { preserveScroll: true, onSuccess: resetCart })
+    }, { preserveScroll: true, preserveState: true, onSuccess: resetCart })
 }
 
 // Receipt printer width (58mm / 80mm) — remembered per device.
@@ -83,11 +83,14 @@ const filteredCustomers = computed(() => {
     const list = q ? props.customers.filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q)) : props.customers
     return list.slice(0, 8)
 })
+// Tier was switched automatically by picking a shop customer (so we may switch it back).
+const tierAuto = ref(false)
 function pickCustomer(c) {
     form.customer_id = c ? c.id : ''
-    // Shop (wholesale) customers buy at the market price; walk-in / retail at the shop price.
-    if (c?.type === 'wholesale') form.type = 'wholesale'
-    else if (form.type === 'wholesale') form.type = 'pos'
+    // A shop customer switches to market price automatically. Picking anyone else only switches
+    // back if the tier had been set automatically — a tier the cashier tapped is never undone.
+    if (c?.type === 'wholesale') { if (form.type !== 'wholesale') tierAuto.value = true; form.type = 'wholesale' }
+    else if (tierAuto.value && form.type === 'wholesale') { form.type = 'pos'; tierAuto.value = false }
     customerSearch.value = ''
     showCustomerList.value = false
 }
@@ -237,11 +240,17 @@ watch(refillQty, (q) => { form.bottles_returned = q > 0 ? q : null })
 function stepReturned(d) { form.bottles_returned = Math.max(0, (Number(form.bottles_returned) || 0) + d) }
 const bottlesOwed = computed(() => refillQty.value - (Number(form.bottles_returned) || 0))
 
-// Re-price cart lines when the tier changes (cost / market / shop).
+// Re-price cart lines when the tier changes (cost / market / shop) — only lines still at their
+// list price; a price the owner typed by hand (or a cooler amount) stays as it is.
 watch([atCost, () => form.type], () => {
     form.items.forEach((i) => {
+        if (i.manual) return
         const p = props.products.find((x) => x.id === i.product_id)
-        if (p) i.unit_price = priceFor(p)
+        if (!p) return
+        if (i.list_price === undefined || Number(i.unit_price) === Number(i.list_price)) {
+            i.unit_price = priceFor(p)
+            i.list_price = i.unit_price
+        }
     })
 })
 
@@ -261,7 +270,8 @@ function addToCart(p, qty = 1, label = null) {
     if (cartQtyFor(p.id) + qty > stock) { notify(`${p.name}: sirf ${stock} ${p.is_pack ? 'packs' : 'available'}`); return }
     const existing = form.items.find((i) => i.product_id === p.id && !label)
     if (existing && !label) { existing.quantity += qty; return }
-    form.items.push({ product_id: p.id, name: label ?? p.name, quantity: qty, unit_price: priceFor(p), discount: 0, tax: 0 })
+    const price = priceFor(p)
+    form.items.push({ product_id: p.id, name: label ?? p.name, quantity: qty, unit_price: price, list_price: price, discount: 0, tax: 0 })
 }
 function inc(it) {
     const p = props.products.find((x) => x.id === it.product_id)
@@ -296,7 +306,7 @@ const dueAmount = computed(() => Math.max(0, payable.value - paidNow.value)) // 
 const isShop = computed(() => form.type === 'wholesale')
 function setShop(on) {
     form.type = on ? 'wholesale' : 'pos'
-    if (!on && selectedCustomer.value?.type === 'wholesale') pickCustomer(null)
+    tierAuto.value = false          // cashier's explicit choice — keep it, keep the customer
 }
 const showMore = ref(false)
 // Paid in full in cash (or what was typed in "Cash received") → complete + print.
@@ -313,6 +323,7 @@ function soldToday(id) { return Number(props.todayCounts?.[id] ?? 0) }
 
 function resetCart() {
     form.reset()
+    tierAuto.value = false
     received.value = null
     form.warehouse_id = props.warehouses[0]?.id ?? ''
     form.items = []
@@ -331,7 +342,7 @@ function complete() {
     }
     form.paid_total = paidNow.value
     // Empty the bill only when the sale really saved (a stock error comes back as flash.error).
-    form.post(route('sales.store'), { preserveScroll: true, onSuccess: (pg) => { if (!pg.props.flash?.error) resetCart() } })
+    form.post(route('sales.store'), { preserveScroll: true, preserveState: true, onSuccess: (pg) => { if (!pg.props.flash?.error) resetCart() } })
 }
 
 // ---- Return (some or all items) / Cancel a wrong bill ----

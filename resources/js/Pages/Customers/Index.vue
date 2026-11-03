@@ -93,6 +93,8 @@ function submitPay() { payForm.post(route('customers.payment', payModal.value.id
         </Card>
 
         <Card v-if="ledgerCustomer" class="mt-4" :title="`Ledger — ${ledgerCustomer.name}`" :subtitle="`Current balance: ${format(ledgerCustomer.current_balance)}`">
+            <button v-if="can('customers.collect') && ledgerCustomer.current_balance > 0" type="button" @click="openPay(ledgerCustomer)"
+                class="mb-3 rounded-full bg-success px-4 py-2 text-sm font-semibold text-white hover:opacity-90">Receive Udhaar — {{ format(ledgerCustomer.current_balance) }}</button>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead><tr class="text-left text-muted-foreground border-b border-border">

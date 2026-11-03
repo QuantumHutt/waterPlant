@@ -33,7 +33,13 @@ const total = computed(() => ({
                     <td class="py-2 pr-4 text-right">{{ r.gross_profit === null ? '—' : format(r.cogs) }}</td>
                     <td class="py-2 pr-0 text-right font-semibold">
                         <span v-if="r.gross_profit === null" class="text-xs font-medium text-warning">Cost not set</span>
-                        <span v-else :class="r.gross_profit >= 0 ? 'text-success' : 'text-destructive'">{{ format(r.gross_profit) }}</span>
+                        <template v-else>
+                            <span :class="r.gross_profit >= 0 ? 'text-success' : 'text-destructive'">{{ format(r.gross_profit) }}</span>
+                            <span v-if="r.market_bottles > 0 && r.shop_bottles > 0" class="block text-[11px] font-normal text-muted-foreground">
+                                Shop {{ r.shop_bottles }} → {{ format(r.shop_profit) }} · Market {{ r.market_bottles }} → {{ format(r.market_profit) }}
+                            </span>
+                            <span v-else-if="r.market_bottles > 0" class="block text-[11px] font-normal text-muted-foreground">Market price</span>
+                        </template>
                     </td>
                 </tr>
                 <tr v-if="!rows.length"><td colspan="5" class="py-6 text-center text-muted-foreground">No sales.</td></tr>
