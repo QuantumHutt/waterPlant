@@ -33,7 +33,7 @@ class SaleRequest extends FormRequest
             'customer_id' => ['nullable', 'required_if:new_bottle,true,1', 'exists:customers,id'],
             'note' => ['nullable', 'string', 'max:255'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'exists:products,id'],
+            'items.*.product_id' => ['required', Rule::exists('products', 'id')->where('is_active', true)->whereNull('deleted_at')],
             'items.*.variant_id' => ['nullable', 'exists:product_variants,id'],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
