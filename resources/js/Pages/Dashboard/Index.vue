@@ -4,6 +4,10 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import StatCard from '@/Components/StatCard.vue'
 import Card from '@/Components/ui/Card.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import ProfitSummary from '@/Components/Profit/ProfitSummary.vue'
+import ProfitBreakdown from '@/Components/Profit/ProfitBreakdown.vue'
+import BottleProfit from '@/Components/Profit/BottleProfit.vue'
+import { ref } from 'vue'
 import {
     FlaskConical, ShoppingCart, TrendingUp, AlertTriangle, Container, PiggyBank, Wallet, Phone,
 } from 'lucide-vue-next'
@@ -11,9 +15,12 @@ import {
 const props = defineProps({
     metrics: { type: Object, required: true },
     receivables: { type: Object, default: () => ({ rows: [], count: 0, total: 0, total_display: 'Rs 0.00' }) },
+    profit: { type: Object, default: null }, // null when the user can't see reports
+    stockSales: { type: Array, default: () => [] },
 })
 
 const { format } = useCurrency()
+const bottleTab = ref('today')
 
 const cards = [
     { key: 'todays_sales', icon: ShoppingCart, tone: 'success' },
@@ -47,6 +54,63 @@ const cards = [
                 :tone="c.tone"
             />
         </div>
+
+        <!-- Stock & Sales: what sold today / this month and what is left -->
+        <Card class="mt-4" title="Stock &amp; Sales">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-left text-muted-foreground border-b border-border">
+                        <th class="py-2 pr-4 font-medium">Product</th>
+                        <th class="py-2 pr-4 font-medium text-right">Sold Today</th>
+                        <th class="py-2 pr-4 font-medium text-right">Sold This Month</th>
+                        <th class="py-2 pr-0 font-medium text-right">In Stock Now</th>
+                    </tr></thead>
+                    <tbody>
+                        <tr v-for="r in stockSales" :key="r.sku" class="border-b border-border/60">
+                            <td class="py-2 pr-4 font-medium">{{ r.name }}</td>
+                            <td class="py-2 pr-4 text-right">
+                                <template v-if="r.is_bottle_stock">—</template>
+                                <template v-else><span class="font-semibold">{{ r.today_qty }}</span> <span class="text-xs text-muted-foreground">{{ format(r.today_amount) }}</span></template>
+                            </td>
+                            <td class="py-2 pr-4 text-right">
+                                <template v-if="r.is_bottle_stock">—</template>
+                                <template v-else><span class="font-semibold">{{ r.month_qty }}</span> <span class="text-xs text-muted-foreground">{{ format(r.month_amount) }}</span></template>
+                            </td>
+                            <td class="py-2 pr-0 text-right">
+                                <span v-if="r.unlimited" class="rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">Unlimited</span>
+                                <span v-else class="font-semibold" :class="r.stock <= 0 ? 'text-destructive' : (r.stock <= 10 ? 'text-warning' : '')">
+                                    {{ r.stock }} {{ r.is_pack ? 'packs' : (r.is_bottle_stock ? 'empty bottles in shop' : 'pcs') }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr v-if="!stockSales.length"><td colspan="4" class="py-6 text-center text-muted-foreground">No products.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">Packs are counted from single-bottle stock (e.g. 60 × 1.5L = 10 packs). 19L bottles with customers: {{ metrics.active_bottles.display }}.</p>
+        </Card>
+
+        <!-- Profit: today + this month (sales − cost − expenses) -->
+        <template v-if="profit">
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <StatCard label="Today's Profit" :value="format(profit.today.net_profit)" :hint="`Sales ${format(profit.today.revenue)} · Expenses ${format(profit.today.expenses)}`" :icon="TrendingUp" :tone="profit.today.net_profit >= 0 ? 'success' : 'destructive'" />
+                <StatCard label="This Month's Profit" :value="format(profit.month.net_profit)" :hint="`Sales ${format(profit.month.revenue)} · Expenses ${format(profit.month.expenses)}`" :icon="PiggyBank" :tone="profit.month.net_profit >= 0 ? 'success' : 'destructive'" />
+            </div>
+            <Card class="mt-4">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-base font-semibold">Profit by Bottle</h3>
+                    <div class="flex rounded-full bg-muted p-1 text-xs font-semibold">
+                        <button type="button" @click="bottleTab = 'today'" class="rounded-full px-3 py-1" :class="bottleTab === 'today' ? 'bg-card shadow' : 'text-muted-foreground'">Today</button>
+                        <button type="button" @click="bottleTab = 'month'" class="rounded-full px-3 py-1" :class="bottleTab === 'month' ? 'bg-card shadow' : 'text-muted-foreground'">This Month</button>
+                    </div>
+                </div>
+                <BottleProfit :rows="bottleTab === 'today' ? profit.bottles_today : profit.bottles_month" />
+            </Card>
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <Card title="This Month — Profit &amp; Loss"><ProfitSummary :pnl="profit.month" /></Card>
+                <Card class="lg:col-span-2" title="Daily Profit — this month"><ProfitBreakdown :rows="profit.daily" label="Date" /></Card>
+            </div>
+        </template>
 
         <!-- Udhaar: customers who owe money -->
         <Card class="mt-4">

@@ -30,7 +30,7 @@ class StoreProductRequest extends FormRequest
             'pack_size' => ['nullable', 'integer', 'min:1'],
             'unit_type' => ['nullable', Rule::in(['single', 'pack'])],
             'pack_of_product_id' => ['nullable', 'exists:products,id', 'required_if:unit_type,pack'],
-            'cost_price' => ['required', 'numeric', 'min:0'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'], // blank = cost not configured yet
             'sale_price' => ['required', 'numeric', 'min:0'],
             'wholesale_price' => ['nullable', 'numeric', 'min:0'],
             'reorder_level' => ['nullable', 'numeric', 'min:0'],

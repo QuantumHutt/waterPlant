@@ -21,6 +21,7 @@ class UserSeeder extends Seeder
             ['Production Manager', 'production@waterplant.test', RoleName::ProductionManager],
             ['Sales Manager', 'sales@waterplant.test', RoleName::SalesManager],
             ['Delivery Staff', 'delivery@waterplant.test', RoleName::DeliveryStaff],
+            ['Salesman', 'salesman@waterplant.test', RoleName::Salesman],
         ];
 
         foreach ($users as [$name, $email, $role]) {

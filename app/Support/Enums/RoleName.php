@@ -13,6 +13,7 @@ enum RoleName: string
     case ProductionManager = 'production-manager';
     case SalesManager = 'sales-manager';
     case DeliveryStaff = 'delivery-staff';
+    case Salesman = 'salesman';
 
     public function label(): string
     {
@@ -24,6 +25,7 @@ enum RoleName: string
             self::ProductionManager => 'Production Manager',
             self::SalesManager => 'Sales Manager',
             self::DeliveryStaff => 'Delivery Staff',
+            self::Salesman => 'Salesman (POS)',
         };
     }
 

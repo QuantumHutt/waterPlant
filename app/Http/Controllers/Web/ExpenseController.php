@@ -22,7 +22,7 @@ class ExpenseController extends Controller
 
         return Inertia::render('Expenses/Index', [
             'expenses' => $this->service->list((int) $request->integer('per_page', 15)),
-            'categories' => ExpenseCategory::where('is_active', true)->get(['id', 'name']),
+            'categories' => ExpenseCategory::where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
 

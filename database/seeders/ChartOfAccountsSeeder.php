@@ -30,6 +30,12 @@ class ChartOfAccountsSeeder extends Seeder
             ['5120', 'Salaries', 'expense', null],
             ['5130', 'Maintenance', 'expense', null],
             ['5140', 'Transport', 'expense', null],
+            ['5150', 'Rent', 'expense', null],
+            ['5160', 'Utilities (Gas, Water, Phone, Internet)', 'expense', null],
+            ['5170', 'Plant Consumables (Filters, Chemicals)', 'expense', null],
+            ['5180', 'Marketing & Printing', 'expense', null],
+            ['5190', 'Bank & Government Charges', 'expense', null],
+            ['5200', 'Delivery Vehicle', 'expense', null],
             ['5900', 'Miscellaneous', 'expense', null],
         ];
 

@@ -13,6 +13,7 @@ use App\Models\Setting;
 use App\Support\Enums\StockMovementType;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class SaleService extends BaseService
 {
@@ -42,15 +43,17 @@ class SaleService extends BaseService
             $subtotal = 0.0;
             $taxTotal = 0.0;
             foreach ($items as &$line) {
-                $line['discount'] = (float) ($line['discount'] ?? 0);
+                $gross = (float) $line['quantity'] * (float) $line['unit_price'];
+                // Manual line discount (owner "sasta dena") — can't exceed the line value.
+                $line['discount'] = min((float) ($line['discount'] ?? 0), $gross);
                 $line['tax'] = (float) ($line['tax'] ?? 0);
-                $line['line_total'] = round((float) $line['quantity'] * (float) $line['unit_price'] - $line['discount'] + $line['tax'], 2);
-                $subtotal += (float) $line['quantity'] * (float) $line['unit_price'];
+                $line['line_total'] = round($gross - $line['discount'] + $line['tax'], 2);
+                $subtotal += $gross - $line['discount'];
                 $taxTotal += $line['tax'];
             }
             unset($line);
 
-            $discount = (float) ($data['discount'] ?? 0);
+            $discount = min((float) ($data['discount'] ?? 0), $subtotal); // never a negative bill
             $grand = round($subtotal - $discount + $taxTotal, 2);
             $paid = (float) ($data['paid_total'] ?? ($data['type'] === 'credit' ? 0 : $grand));
             $paid = min($paid, $grand);
@@ -76,8 +79,16 @@ class SaleService extends BaseService
             ]);
 
             foreach ($items as $line) {
+                // Snapshot today's cost so later price edits never rewrite historical profit.
+                // A product with no configured cost (e.g. 19L refill) stores NULL → profit pending.
+                $cost = Product::whereKey($line['product_id'])->value('cost_price');
+                $line['unit_cost'] = $cost !== null ? (float) $cost : null;
                 $invoice->items()->create($line);
                 $this->deductForLine($invoice, $line);
+            }
+
+            if (array_key_exists('bottles_returned', $data) && $data['bottles_returned'] !== null) {
+                $this->trackBottleExchange($invoice, $items, (int) $data['bottles_returned']);
             }
 
             // New 19L bottle sale: deduct a company bottle + record the refundable deposit.
@@ -87,11 +98,8 @@ class SaleService extends BaseService
 
             if ($invoice->customer_id) {
                 $customer = Customer::find($invoice->customer_id);
-                // Receivable created for the full invoice, then reduced by what was paid.
+                // Receivable created for the full invoice; recordPayment() below credits what was paid.
                 $this->ledger->post($customer, $grand, 0, $invoice, "Invoice {$invoice->invoice_number}");
-                if ($paid > 0) {
-                    $this->ledger->post($customer, 0, $paid, $invoice, "Payment on {$invoice->invoice_number}");
-                }
             }
 
             if ($paid > 0) {
@@ -143,8 +151,9 @@ class SaleService extends BaseService
             ]);
         }
 
+        // Refill water is unlimited unless the owner turns on bulk-water tracking in settings.
         $litres = (float) $product->water_litres * $qty;
-        if ($litres > 0 && ($waterId = $this->waterProductId())) {
+        if ($litres > 0 && Setting::get('sales', 'track_refill_water') && ($waterId = $this->waterProductId())) {
             $this->inventory->move([
                 'warehouse_id' => $invoice->warehouse_id,
                 'product_id' => $waterId,
@@ -154,6 +163,52 @@ class SaleService extends BaseService
                 'note' => "Water for {$invoice->invoice_number}",
             ]);
         }
+    }
+
+    /**
+     * 19L exchange on a refill sale: each refill hands over a filled company bottle and the
+     * customer returns empties. Only the difference moves shop bottle stock, and it is kept
+     * on the customer's bottle balance (e.g. 5 delivered, 4 returned → customer owes 1).
+     *
+     * @param array<int, array<string,mixed>> $items
+     */
+    private function trackBottleExchange(Invoice $invoice, array $items, int $returned): void
+    {
+        $refillId = Product::where('sku', Setting::get('sales', 'refill_service_sku') ?? '19L-REFILL')->value('id');
+        $delivered = (int) collect($items)->where('product_id', $refillId)->sum('quantity');
+        if ($delivered === 0 && $returned === 0) {
+            return;
+        }
+
+        if (! $invoice->customer_id && $delivered !== $returned) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'Select a customer — bottles given and empties returned don\'t match, so the balance must be tracked.',
+            ]);
+        }
+
+        $net = $delivered - $returned;
+        $bottle = Product::where('sku', Setting::get('sales', 'bottle_19l_sku') ?? '19L-BOTTLE')->first();
+        if ($net !== 0 && $bottle && $bottle->track_inventory) {
+            $this->inventory->move([
+                'warehouse_id' => $invoice->warehouse_id,
+                'product_id' => $bottle->id,
+                'type' => $net > 0 ? StockMovementType::Out : StockMovementType::In,
+                'quantity' => abs($net),
+                'reference' => $invoice,
+                'note' => "19L exchange {$invoice->invoice_number}: {$delivered} given, {$returned} returned",
+            ]);
+        }
+
+        if ($invoice->customer_id) {
+            if ($delivered > 0) {
+                $this->gallons->record(['customer_id' => $invoice->customer_id, 'type' => 'issue', 'quantity' => $delivered, 'note' => $invoice->invoice_number]);
+            }
+            if ($returned > 0) {
+                $this->gallons->record(['customer_id' => $invoice->customer_id, 'type' => 'return', 'quantity' => $returned, 'note' => $invoice->invoice_number]);
+            }
+        }
+
+        $invoice->update(['bottles_delivered' => $delivered, 'bottles_returned' => $returned]);
     }
 
     /** Issue a company 19L bottle on a refundable deposit (liability), tracked per customer. */
@@ -196,9 +251,16 @@ class SaleService extends BaseService
         return $this->waterProductId;
     }
 
-    public function recordPayment(Invoice $invoice, float $amount, string $method = 'cash'): Payment
+    /**
+     * Receive money against an invoice. Keeps all three in step: the invoice balance/status,
+     * a Payment (cash/bank in) record, and the customer's udhaar ledger.
+     */
+    public function recordPayment(Invoice $invoice, float $amount, string $method = 'cash', ?string $date = null): Payment
     {
-        return $this->transaction(function () use ($invoice, $amount, $method): Payment {
+        return $this->transaction(function () use ($invoice, $amount, $method, $date): Payment {
+            // Never take more than the invoice still owes (extra is handled by CustomerService).
+            $amount = round(min($amount, max(0.0, (float) $invoice->balance)), 2);
+
             $payment = Payment::create([
                 'reference' => 'RCV-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
                 'payable_type' => $invoice->getMorphClass(),
@@ -206,9 +268,13 @@ class SaleService extends BaseService
                 'amount' => $amount,
                 'method' => $method,
                 'direction' => 'in',
-                'paid_at' => now()->toDateString(),
+                'paid_at' => $date ?? now()->toDateString(),
                 'created_by' => auth()->id(),
             ]);
+
+            if ($invoice->customer_id && ($customer = Customer::find($invoice->customer_id))) {
+                $this->ledger->post($customer, 0, $amount, $invoice, "Payment on {$invoice->invoice_number}", $date);
+            }
 
             $paid = round((float) $invoice->paid_total + $amount, 2);
             $invoice->update([
@@ -235,7 +301,7 @@ class SaleService extends BaseService
                 'created_by' => auth()->id(),
             ]);
 
-            foreach ($invoice->items as $item) {
+            foreach ($invoice->items()->with('product')->get() as $item) {
                 $return->items()->create([
                     'product_id' => $item->product_id,
                     'variant_id' => $item->variant_id,
@@ -244,15 +310,29 @@ class SaleService extends BaseService
                     'line_total' => $item->line_total,
                 ]);
 
-                $this->inventory->move([
-                    'warehouse_id' => $invoice->warehouse_id,
-                    'product_id' => $item->product_id,
-                    'variant_id' => $item->variant_id,
-                    'type' => StockMovementType::Return,
-                    'quantity' => (float) $item->quantity,
-                    'reference' => $return,
-                    'note' => "Return {$return->return_number}",
-                ]);
+                // Restock what the sale deducted: a pack returns pack_size base bottles;
+                // services / untracked products hold no stock of their own.
+                $product = $item->product;
+                if ($product?->isPack()) {
+                    $this->inventory->move([
+                        'warehouse_id' => $invoice->warehouse_id,
+                        'product_id' => $product->pack_of_product_id,
+                        'type' => StockMovementType::Return,
+                        'quantity' => (float) $item->quantity * max(1, (int) $product->pack_size),
+                        'reference' => $return,
+                        'note' => "Pack ({$product->pack_size}) — Return {$return->return_number}",
+                    ]);
+                } elseif ($product && $product->track_inventory && ! $product->is_service) {
+                    $this->inventory->move([
+                        'warehouse_id' => $invoice->warehouse_id,
+                        'product_id' => $item->product_id,
+                        'variant_id' => $item->variant_id,
+                        'type' => StockMovementType::Return,
+                        'quantity' => (float) $item->quantity,
+                        'reference' => $return,
+                        'note' => "Return {$return->return_number}",
+                    ]);
+                }
             }
 
             if ($invoice->customer_id) {

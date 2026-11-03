@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\ProductionBatch;
 use App\Services\AccountingService;
+use App\Services\ProfitService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -15,7 +16,10 @@ use Inertia\Response;
 
 class ReportController extends Controller
 {
-    public function __construct(private readonly AccountingService $accounting) {}
+    public function __construct(
+        private readonly AccountingService $accounting,
+        private readonly ProfitService $profit,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -70,6 +74,14 @@ class ReportController extends Controller
                     ->orderByDesc('customer_gallon_balances.held_qty')->limit(50)->get(),
             ],
             'profitLoss' => $this->accounting->profitAndLoss($from, $to),
+            'grossProfit' => $this->profit->byProduct($from, $to),
+            'byBottle' => $this->profit->byBottle($from, $to),
+            // Operational P&L (sales − cost − expenses …) — daily rows for the range, last 12 months.
+            'pnl' => $this->profit->summary($from, $to),
+            'daily' => $this->profit->breakdown($from, $to, 'day'),
+            'monthly' => $this->profit->breakdown(
+                \Illuminate\Support\Carbon::parse($to)->subMonths(11)->startOfMonth()->toDateString(), $to, 'month',
+            ),
             'topProducts' => DB::table('invoice_items')
                 ->join('products', 'products.id', '=', 'invoice_items.product_id')
                 ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')

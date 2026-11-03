@@ -5,9 +5,12 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import Card from '@/Components/ui/Card.vue'
 import StatCard from '@/Components/StatCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import ProfitSummary from '@/Components/Profit/ProfitSummary.vue'
+import ProfitBreakdown from '@/Components/Profit/ProfitBreakdown.vue'
+import BottleProfit from '@/Components/Profit/BottleProfit.vue'
 import { ShoppingCart, FlaskConical, Boxes, PiggyBank } from 'lucide-vue-next'
 
-const props = defineProps({ filters: Object, sales: Object, production: Object, inventory: Object, bottles: Object, profitLoss: Object, topProducts: Array })
+const props = defineProps({ filters: Object, sales: Object, production: Object, inventory: Object, bottles: Object, profitLoss: Object, grossProfit: Object, byBottle: Array, pnl: Object, daily: Array, monthly: Array, topProducts: Array })
 const { format } = useCurrency()
 
 const from = ref(props.filters.from)
@@ -33,7 +36,7 @@ function apply() { router.get(route('reports.index'), { from: from.value, to: to
             <StatCard label="Sales" :value="format(sales.total)" :hint="`${sales.count} invoices`" :icon="ShoppingCart" tone="brand" />
             <StatCard label="Water Produced (L)" :value="String(production.water_litres)" :hint="`${production.batches} batches`" :icon="FlaskConical" tone="success" />
             <StatCard label="Inventory Value" :value="format(inventory.value)" :hint="`${inventory.low_stock} low stock`" :icon="Boxes" tone="warning" />
-            <StatCard label="Net Profit" :value="format(profitLoss.net_profit)" hint="for period" :icon="PiggyBank" :tone="profitLoss.net_profit >= 0 ? 'success' : 'destructive'" />
+            <StatCard label="Net Profit" :value="format(pnl.net_profit)" :hint="`Gross ${format(pnl.gross_profit)} − Expenses ${format(pnl.expenses)}`" :icon="PiggyBank" :tone="pnl.net_profit >= 0 ? 'success' : 'destructive'" />
         </div>
 
         <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
@@ -44,6 +47,46 @@ function apply() { router.get(route('reports.index'), { from: from.value, to: to
             <div class="rounded-2xl bg-card ring-1 ring-border p-4"><p class="text-xs text-muted-foreground">Damaged</p><p class="text-xl font-semibold">{{ bottles.damaged }}</p></div>
             <div class="rounded-2xl bg-card ring-1 ring-border p-4"><p class="text-xs text-muted-foreground">Deposit Liability</p><p class="text-xl font-semibold">{{ format(bottles.deposit_balance) }}</p></div>
         </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Card title="Profit &amp; Loss (selected dates)"><ProfitSummary :pnl="pnl" /></Card>
+            <Card class="lg:col-span-2" title="Daily Profit"><ProfitBreakdown :rows="daily" label="Date" /></Card>
+        </div>
+
+        <Card class="mt-4" title="Profit by Bottle (selected dates)"><BottleProfit :rows="byBottle" /></Card>
+
+        <Card class="mt-4" title="Monthly Profit (last 12 months)"><ProfitBreakdown :rows="monthly" label="Month" /></Card>
+
+        <Card class="mt-4" title="Product-wise Gross Profit">
+            <p class="mb-3 text-xs text-muted-foreground">Uses the cost recorded at the time of each sale. Shop = walk-in / retail price · Market = shop customers.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-left text-muted-foreground border-b border-border"><th class="py-2 pr-4 font-medium">Product</th><th class="py-2 pr-4 font-medium">Channel</th><th class="py-2 pr-4 font-medium text-right">Qty</th><th class="py-2 pr-4 font-medium text-right">Revenue</th><th class="py-2 pr-4 font-medium text-right">Cost</th><th class="py-2 pr-4 font-medium text-right">Gross Profit</th><th class="py-2 pr-0 font-medium text-right">Per Unit</th></tr></thead>
+                    <tbody>
+                        <tr v-for="r in grossProfit.rows" :key="r.sku + r.channel" class="border-b border-border/60">
+                            <td class="py-2 pr-4">{{ r.name }}</td>
+                            <td class="py-2 pr-4 capitalize">{{ r.channel }}</td>
+                            <td class="py-2 pr-4 text-right">{{ r.qty }}</td>
+                            <td class="py-2 pr-4 text-right">{{ format(r.revenue) }}</td>
+                            <td class="py-2 pr-4 text-right">{{ format(r.cogs) }}</td>
+                            <td class="py-2 pr-4 text-right">
+                                <span v-if="r.gross_profit === null" class="text-xs font-medium text-warning">Pending — cost not configured</span>
+                                <template v-else>
+                                    <span :class="r.gross_profit >= 0 ? 'text-success' : 'text-destructive'">{{ format(r.gross_profit) }}</span>
+                                    <p v-if="r.pending_qty" class="text-[11px] text-warning">+ {{ r.pending_qty }} unit(s) pending cost</p>
+                                </template>
+                            </td>
+                            <td class="py-2 pr-0 text-right">{{ r.profit_per_unit === null ? '—' : format(r.profit_per_unit) }}</td>
+                        </tr>
+                        <tr v-if="!grossProfit.rows.length"><td colspan="7" class="py-6 text-center text-muted-foreground">No sales.</td></tr>
+                    </tbody>
+                    <tfoot>
+                        <tr class="border-t border-border font-semibold"><td class="py-2" colspan="3">Total</td><td class="py-2 pr-4 text-right">{{ format(grossProfit.revenue) }}</td><td class="py-2 pr-4 text-right">{{ format(grossProfit.cogs) }}</td><td class="py-2 pr-4 text-right">{{ format(grossProfit.gross_profit) }}</td><td></td></tr>
+                        <tr v-if="grossProfit.pending_revenue"><td class="py-2 text-warning" colspan="7">{{ format(grossProfit.pending_revenue) }} of revenue has no configured cost (e.g. 19L refill) and is excluded from gross profit.</td></tr>
+                    </tfoot>
+                </table>
+            </div>
+        </Card>
 
         <Card class="mt-4" title="Customer Bottle &amp; Deposit Ledger">
             <table class="w-full text-sm">

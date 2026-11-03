@@ -11,7 +11,7 @@ import {
 
 defineProps({ onClose: { type: Function, default: () => {} } })
 
-const { can, canAny } = usePermissions()
+const { can, canAny, hasRole } = usePermissions()
 const page = usePage()
 
 // route() comes from Ziggy (global). Helper that tolerates unbuilt routes.
@@ -24,7 +24,7 @@ const isCurrent = (name) => {
 }
 
 const nav = computed(() => [
-    { label: 'Dashboard', icon: LayoutDashboard, route: 'dashboard', show: true },
+    { label: 'Dashboard', icon: LayoutDashboard, route: 'dashboard', show: !hasRole('salesman') },
     { label: 'Products', icon: Package, route: 'products.index', show: can('products.view') },
     { label: 'Inventory', icon: Boxes, route: 'inventory.index', show: can('inventory.view') },
     { label: 'Internal Use', icon: Home, route: 'consumption.index', show: can('consumption.view') },

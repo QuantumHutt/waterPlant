@@ -32,7 +32,7 @@ class UpdateProductRequest extends FormRequest
             'pack_size' => ['nullable', 'integer', 'min:1'],
             'unit_type' => ['nullable', Rule::in(['single', 'pack'])],
             'pack_of_product_id' => ['nullable', 'exists:products,id'],
-            'cost_price' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'cost_price' => ['sometimes', 'nullable', 'numeric', 'min:0'], // blank = cost not configured yet
             'sale_price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'wholesale_price' => ['nullable', 'numeric', 'min:0'],
             'reorder_level' => ['nullable', 'numeric', 'min:0'],

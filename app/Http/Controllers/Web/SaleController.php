@@ -26,23 +26,52 @@ class SaleController extends Controller
 
         return Inertia::render('Sales/Index', [
             'invoices' => $this->service->list((int) $request->integer('per_page', 15), $request->only(['status', 'type'])),
-            'customers' => Customer::where('is_active', true)->get(['id', 'name', 'type']),
+            // current_balance = udhaar owed (shown at the POS; salesman can collect it).
+            'customers' => Customer::where('is_active', true)->get(['id', 'name', 'type', 'phone', 'current_balance']),
             'warehouses' => Warehouse::where('is_active', true)->get(['id', 'name']),
             // Sealed sellable products only (excludes bulk water + the company bottle, which have no sale price).
             'products' => $this->sellableProducts(),
             // 19L refill service (deducts water only) + deposit config for the new-bottle action.
             'refillService' => Product::where('sku', \App\Models\Setting::get('sales', 'refill_service_sku') ?? '19L-REFILL')
                 ->first(['id', 'name', 'sku', 'sale_price']),
+            // Cooler refill — amount typed in per sale (any POS user).
+            'coolerRefill' => Product::where('sku', 'COOLER-REFILL')->where('is_active', true)->first(['id', 'name', 'sku']),
+            // How many of each product sold today (shown on the POS tiles).
+            'todayCounts' => \Illuminate\Support\Facades\DB::table('invoice_items')
+                ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+                ->whereDate('invoices.invoice_date', now()->toDateString())
+                ->whereNotIn('invoices.status', ['cancelled', 'returned'])
+                ->groupBy('invoice_items.product_id')
+                ->selectRaw('invoice_items.product_id, SUM(invoice_items.quantity) as q')
+                ->pluck('q', 'product_id')->map(fn ($q) => (float) $q),
             'bottleDeposit' => (float) (\App\Models\Setting::get('sales', 'bottle_deposit') ?? 1000),
         ]);
     }
 
     public function store(SaleRequest $request): RedirectResponse
     {
-        $invoice = $this->service->create($request->validated());
+        $data = $request->validated();
+
+        // Without the discount permission (e.g. salesman) the server enforces list prices —
+        // a price or discount typed into the browser is ignored.
+        if (! $request->user()->can('sales.discount')) {
+            $prices = Product::whereIn('id', array_column($data['items'], 'product_id'))->get()->keyBy('id');
+            foreach ($data['items'] as &$line) {
+                if ($prices[$line['product_id']]->is_manual_price) {
+                    $line['discount'] = 0;   // amount typed at the counter (cooler refill) is kept
+                    continue;
+                }
+                $line['unit_price'] = $prices[$line['product_id']]->priceFor($data['type']);
+                $line['discount'] = 0;
+            }
+            unset($line);
+            $data['discount'] = 0;
+        }
+
+        $invoice = $this->service->create($data);
 
         return back()
-            ->with('success', "Sale completed — {$invoice->invoice_number}.")
+            ->with('success', "✓ Sale complete — {$invoice->invoice_number} · ".\App\Support\Money::format((float) $invoice->grand_total))
             ->with('print_invoice_id', $invoice->id);
     }
 
@@ -59,11 +88,14 @@ class SaleController extends Controller
             ->selectRaw('product_id, SUM(quantity) as q')
             ->pluck('q', 'product_id');
 
+        // Cost is owner data (bill-at-cost / below-cost warning) — never sent to a cashier's browser.
+        $showCost = auth()->user()?->hasRole(\App\Support\Enums\RoleName::SuperAdmin->value) ?? false;
+
         return Product::where('is_active', true)
             ->where('is_service', false)
             ->where('sale_price', '>', 0)
             ->get(['id', 'name', 'sku', 'barcode', 'sale_price', 'wholesale_price', 'cost_price', 'pack_size', 'pack_of_product_id'])
-            ->map(function ($p) use ($onHand) {
+            ->map(function ($p) use ($onHand, $showCost) {
                 $baseId = $p->pack_of_product_id ?? $p->id;
                 $baseQty = (float) ($onHand[$baseId] ?? 0);
                 $stock = $p->pack_of_product_id
@@ -77,7 +109,7 @@ class SaleController extends Controller
                     'barcode' => $p->barcode,
                     'sale_price' => (float) $p->sale_price,
                     'wholesale_price' => $p->wholesale_price !== null ? (float) $p->wholesale_price : null,
-                    'cost_price' => (float) $p->cost_price,
+                    'cost_price' => $showCost && $p->cost_price !== null ? (float) $p->cost_price : null,
                     'pack_size' => (int) $p->pack_size,
                     'is_pack' => $p->pack_of_product_id !== null,
                     'stock' => $stock,
@@ -119,7 +151,7 @@ class SaleController extends Controller
     {
         abort_unless($request->user()->can('sales.update'), 403);
         $data = $request->validate([
-            'amount' => ['required', 'numeric', 'gt:0'],
+            'amount' => ['required', 'numeric', 'gt:0', 'max:'.round(max(0.0, (float) $invoice->balance), 2)], // no overpayment
             'method' => ['nullable', 'in:cash,bank,cheque,card,credit'],
         ]);
         $this->service->recordPayment($invoice, (float) $data['amount'], $data['method'] ?? 'cash');

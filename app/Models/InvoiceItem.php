@@ -10,12 +10,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InvoiceItem extends Model
 {
     protected $fillable = [
-        'invoice_id', 'product_id', 'variant_id', 'quantity', 'unit_price', 'discount', 'tax', 'line_total',
+        'invoice_id', 'product_id', 'variant_id', 'quantity', 'unit_price', 'unit_cost', 'discount', 'tax', 'line_total',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:3',
         'unit_price' => 'decimal:2',
+        'unit_cost' => 'decimal:4',
         'discount' => 'decimal:2',
         'tax' => 'decimal:2',
         'line_total' => 'decimal:2',

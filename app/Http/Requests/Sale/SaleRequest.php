@@ -28,6 +28,8 @@ class SaleRequest extends FormRequest
             // New 19L bottle on deposit (requires a named customer to track the deposit).
             'new_bottle' => ['sometimes', 'boolean'],
             'deposit' => ['nullable', 'numeric', 'min:0'],
+            // Empty 19L bottles the customer handed back on a refill sale (exchange tracking).
+            'bottles_returned' => ['nullable', 'integer', 'min:0'],
             'customer_id' => ['nullable', 'required_if:new_bottle,true,1', 'exists:customers,id'],
             'note' => ['nullable', 'string', 'max:255'],
             'items' => ['required', 'array', 'min:1'],

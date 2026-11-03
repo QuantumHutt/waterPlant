@@ -39,8 +39,10 @@ function submit() {
 }
 
 const payModal = ref(null)
-const payForm = useForm({ amount: null, note: '' })
+const payForm = useForm({ amount: null, method: 'cash', note: '' })
 function openPay(c) { payModal.value = c; payForm.reset() }
+// Never more than the udhaar owed.
+watch(() => payForm.amount, (v) => { const max = Number(payModal.value?.current_balance ?? 0); if (Number(v) > max) payForm.amount = max })
 function submitPay() { payForm.post(route('customers.payment', payModal.value.id), { onSuccess: () => (payModal.value = null), preserveScroll: true }) }
 </script>
 
@@ -79,7 +81,7 @@ function submitPay() { payForm.post(route('customers.payment', payModal.value.id
                             <td class="py-3 pr-0">
                                 <div class="flex items-center justify-end gap-1">
                                     <Link :href="route('customers.ledger', c.id)" class="rounded-full p-2 hover:bg-muted" title="Ledger"><BookText class="size-4" /></Link>
-                                    <button v-if="can('customers.update')" @click="openPay(c)" class="rounded-full p-2 hover:bg-success/10 text-success" title="Record payment"><Wallet class="size-4" /></button>
+                                    <button v-if="can('customers.collect')" @click="openPay(c)" class="rounded-full p-2 hover:bg-success/10 text-success" title="Record payment"><Wallet class="size-4" /></button>
                                     <button v-if="can('customers.update')" @click="openEdit(c)" class="rounded-full p-2 hover:bg-muted" title="Edit"><Pencil class="size-4" /></button>
                                 </div>
                             </td>
@@ -136,8 +138,14 @@ function submitPay() { payForm.post(route('customers.payment', payModal.value.id
 
         <Modal :show="!!payModal" @close="payModal = null">
             <form @submit.prevent="submitPay" class="p-6 space-y-4">
-                <h3 class="text-lg font-semibold">Record Payment — {{ payModal?.name }}</h3>
-                <div><InputLabel value="Amount" /><TextInput v-model.number="payForm.amount" type="number" step="0.01" class="mt-1 block w-full" required /><InputError :message="payForm.errors.amount" class="mt-1" /></div>
+                <h3 class="text-lg font-semibold">Receive Udhaar — {{ payModal?.name }}</h3>
+                <p class="text-sm text-muted-foreground">Owes {{ format(payModal?.current_balance ?? 0) }}. Oldest unpaid invoices are settled first.</p>
+                <div><InputLabel value="Amount" /><TextInput v-model.number="payForm.amount" type="number" step="0.01" min="0.01" :max="payModal?.current_balance" class="mt-1 block w-full" required /><InputError :message="payForm.errors.amount" class="mt-1" /></div>
+                <div><InputLabel value="Received in" />
+                    <select v-model="payForm.method" class="mt-1 block w-full rounded-md border-border bg-background focus:border-brand focus:ring-brand">
+                        <option value="cash">Cash</option><option value="bank">Bank / Easypaisa / JazzCash</option><option value="cheque">Cheque</option>
+                    </select>
+                </div>
                 <div><InputLabel value="Note" /><TextInput v-model="payForm.note" class="mt-1 block w-full" /></div>
                 <div class="flex justify-end gap-3 pt-2">
                     <SecondaryButton type="button" @click="payModal = null">Cancel</SecondaryButton>

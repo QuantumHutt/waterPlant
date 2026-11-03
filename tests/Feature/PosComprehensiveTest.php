@@ -88,7 +88,7 @@ class PosComprehensiveTest extends TestCase {
 
   public function test_internal_consumption_pack_deducts_base(){
     $base=$this->stock('SEAL-500');
-    app(InternalConsumptionService::class)->record(['warehouse_id'=>$this->wh(),'product_id'=>$this->pid('PACK-500-24'),'quantity'=>1]);
-    $this->assertSame($base-24,$this->stock('SEAL-500')); // 1 pack = 24 base bottles
+    app(InternalConsumptionService::class)->record(['warehouse_id'=>$this->wh(),'product_id'=>$this->pid('PACK-500-12'),'quantity'=>1]);
+    $this->assertSame($base-12,$this->stock('SEAL-500')); // 1 pack = 12 base bottles
   }
 }

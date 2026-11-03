@@ -21,10 +21,10 @@ class PosSaleTest extends TestCase {
     $this->assertSame(1,Invoice::where('type','pos')->count());
   }
   public function test_pos_pack_sale(){
-    $pack=Product::where('sku','PACK-500-24')->first(); $base=Product::where('sku','SEAL-500')->first();
-    $r=$this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos','items'=>[['product_id'=>$pack->id,'quantity'=>1,'unit_price'=>684]]]);
+    $pack=Product::where('sku','PACK-500-12')->first(); $base=Product::where('sku','SEAL-500')->first();
+    $r=$this->post(route('sales.store'),['warehouse_id'=>$this->wh(),'type'=>'pos','items'=>[['product_id'=>$pack->id,'quantity'=>1,'unit_price'=>420]]]);
     $r->assertSessionHasNoErrors();
-    $this->assertSame(976.0,(float)StockItem::where('product_id',$base->id)->sum('quantity')); // 1000-24
+    $this->assertSame(988.0,(float)StockItem::where('product_id',$base->id)->sum('quantity')); // 1000-12
   }
   public function test_oversell_shows_error_flash(){
     $p=Product::where('sku','SEAL-6000')->first();

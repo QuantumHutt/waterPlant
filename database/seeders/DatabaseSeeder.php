@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             ProductSeeder::class,          // catalog: 500ml / 1.5L / 6L + 19L + packs + raw materials
             ChartOfAccountsSeeder::class,  // double-entry chart of accounts
             ExpenseSetupSeeder::class,     // expense categories
+            SalesmanSeeder::class,         // POS salesman account (umer@gmail.com)
         ]);
     }
 }

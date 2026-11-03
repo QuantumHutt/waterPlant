@@ -29,7 +29,7 @@ class ProductResource extends JsonResource
             'unit_type' => $this->unit_type,
             'pack_size' => $this->pack_size,
             'pack_of_product_id' => $this->pack_of_product_id,
-            'cost_price' => (float) $this->cost_price,
+            'cost_price' => $this->cost_price !== null ? (float) $this->cost_price : null,
             'sale_price' => (float) $this->sale_price,
             'wholesale_price' => $this->wholesale_price !== null ? (float) $this->wholesale_price : null,
             'reorder_level' => (float) $this->reorder_level,

@@ -17,17 +17,16 @@ class CustomerSeeder extends Seeder
             'is_active' => true,
         ]);
 
+        // Sample SHOP customers (type wholesale → market price at the POS).
         $samples = [
-            ['Al-Madina Store', 'wholesale', 50000],
-            ['Hassan General Store', 'retail', 10000],
-            ['City Office Tower', 'corporate', 100000],
+            ['Sample Shop A', 50000],
+            ['Sample Shop B', 25000],
         ];
 
-        foreach ($samples as [$name, $type, $limit]) {
+        foreach ($samples as [$name, $limit]) {
             Customer::firstOrCreate(['name' => $name], [
                 'code' => 'CUST-'.strtoupper(substr(md5($name), 0, 5)),
-                'type' => $type,
-                'phone' => '0300'.random_int(1000000, 9999999),
+                'type' => 'wholesale',
                 'credit_limit' => $limit,
                 'is_active' => true,
             ]);

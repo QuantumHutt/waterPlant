@@ -65,10 +65,22 @@ class CustomerController extends Controller
 
     public function payment(Request $request, Customer $customer): RedirectResponse
     {
-        abort_unless($request->user()->can('customers.update'), 403);
-        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0'], 'note' => ['nullable', 'string', 'max:255']]);
-        $this->service->recordPayment($customer, (float) $data['amount'], $data['note'] ?? null);
+        abort_unless($request->user()->can('customers.collect'), 403);
+        // Only what is actually owed can be received — no extra / advance amounts.
+        $owed = round(max(0.0, (float) $customer->current_balance), 2);
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0', 'max:'.$owed],
+            'method' => ['nullable', 'in:cash,bank,cheque,card'],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+        $data['amount'] = round((float) $data['amount'], 2);
+        $result = $this->service->recordPayment($customer, (float) $data['amount'], $data['note'] ?? null, $data['method'] ?? 'cash');
 
-        return back()->with('success', 'Payment recorded.');
+        $msg = '✓ Received '.\App\Support\Money::format((float) $data['amount'])." from {$customer->name}";
+        if ($result['invoices']) {
+            $msg .= ' — settled '.implode(', ', $result['invoices']);
+        }
+
+        return back()->with('success', $msg);
     }
 }

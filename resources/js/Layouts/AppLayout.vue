@@ -43,14 +43,12 @@ watch(
                     <main class="flex-1 w-full overflow-auto rounded-b-3xl bg-muted p-3 sm:p-5 md:px-7 md:py-6 lg:w-auto lg:rounded-r-3xl lg:rounded-bl-none">
                         <Topbar :on-menu-click="() => (sidebarOpen = true)" />
 
-                        <!-- Flash -->
+                        <!-- Flash toast — floats over the page so it is seen even when scrolled -->
                         <transition name="fade">
                             <div
                                 v-if="flash"
-                                class="mb-4 rounded-2xl px-4 py-3 text-sm font-medium ring-1"
-                                :class="flash.type === 'success'
-                                    ? 'bg-success/10 text-success ring-success/20'
-                                    : 'bg-destructive/10 text-destructive ring-destructive/20'"
+                                class="fixed left-1/2 top-5 z-[130] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg"
+                                :class="flash.type === 'success' ? 'bg-success' : 'bg-destructive'"
                             >
                                 {{ flash.message }}
                             </div>

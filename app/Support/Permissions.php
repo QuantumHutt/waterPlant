@@ -26,10 +26,10 @@ final class Permissions
         'consumption' => ['view', 'create'],   // owner/internal use (not a sale)
         'production' => ['view', 'create', 'update', 'delete'],
         'gallons' => ['view', 'manage'],
-        'customers' => ['view', 'create', 'update', 'delete'],
+        'customers' => ['view', 'create', 'update', 'delete', 'collect'], // collect = receive udhaar payments
         'suppliers' => ['view', 'create', 'update', 'delete'],
         'purchases' => ['view', 'create', 'update', 'delete', 'receive'],
-        'sales' => ['view', 'create', 'update', 'delete', 'return'],
+        'sales' => ['view', 'create', 'update', 'delete', 'return', 'discount'], // discount = manual price / discount
         'delivery' => ['view', 'create', 'update', 'delete', 'confirm'],
         'accounting' => ['view', 'create', 'update', 'delete', 'post'],
         'expenses' => ['view', 'create', 'update', 'delete'],
@@ -118,6 +118,13 @@ final class Permissions
                 self::viewOnly(['customers', 'sales']),
                 ['notifications.view'],
             ),
+
+            // POS only: sell at list price, add walk-in / shop customers, receive udhaar.
+            // No price changes, discounts, returns, reports or dashboard.
+            RoleName::Salesman->value => [
+                'sales.view', 'sales.create', 'customers.view', 'customers.create', 'customers.collect',
+                'products.view', 'notifications.view',
+            ],
         ];
     }
 }

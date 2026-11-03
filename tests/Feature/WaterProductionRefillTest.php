@@ -37,6 +37,8 @@ class WaterProductionRefillTest extends TestCase
         $this->seed(ChartOfAccountsSeeder::class);
 
         $this->warehouse = Warehouse::where('code', 'MAIN')->first();
+        // These tests cover bulk-water tracking, which is off by default (refills unlimited).
+        \App\Models\Setting::set('sales', 'track_refill_water', true, 'bool');
         $this->water = Product::where('sku', 'WATER-BULK')->firstOrFail();
 
         $user = User::factory()->create();
@@ -86,7 +88,11 @@ class WaterProductionRefillTest extends TestCase
 
     public function test_batch_consumption_reduces_raw_stock(): void
     {
-        $cap = Product::where('sku', 'CAP-STD')->firstOrFail();
+        // Raw materials aren't in the shop catalog any more — create one for this test.
+        $cap = Product::create([
+            'category_id' => \App\Models\ProductCategory::firstOrCreate(['slug' => 'caps'], ['name' => 'Caps', 'type' => 'cap', 'is_active' => true])->id,
+            'sku' => 'CAP-TEST', 'name' => 'Bottle Cap', 'type' => 'consumable', 'unit' => 'pcs', 'cost_price' => 0.8,
+        ]);
         app(InventoryService::class)->stockIn($this->warehouse->id, $cap->id, 1000, 0.8);
 
         app(ProductionService::class)->create([
@@ -148,18 +154,18 @@ class WaterProductionRefillTest extends TestCase
     public function test_pack_sale_deducts_base_bottles_from_single_stock(): void
     {
         $single = Product::where('sku', 'SEAL-500')->firstOrFail();   // base single
-        $pack = Product::where('sku', 'PACK-500-24')->firstOrFail();  // 24-pack, no own stock
+        $pack = Product::where('sku', 'PACK-500-12')->firstOrFail();  // 12-pack, no own stock
         app(InventoryService::class)->stockIn($this->warehouse->id, $single->id, 100, 8);
 
-        // Sell 2 packs (= 48 bottles).
+        // Sell 2 packs (= 24 bottles).
         app(SaleService::class)->create([
             'warehouse_id' => $this->warehouse->id,
             'type' => 'pos',
-            'items' => [['product_id' => $pack->id, 'quantity' => 2, 'unit_price' => 684]],
+            'items' => [['product_id' => $pack->id, 'quantity' => 2, 'unit_price' => 420]],
         ]);
 
-        // Base single stock dropped by 48; the pack itself never held stock.
-        $this->assertSame(52.0, (float) StockItem::where('product_id', $single->id)->sum('quantity'));
+        // Base single stock dropped by 24; the pack itself never held stock.
+        $this->assertSame(76.0, (float) StockItem::where('product_id', $single->id)->sum('quantity'));
         $this->assertSame(0, StockItem::where('product_id', $pack->id)->count());
     }
 

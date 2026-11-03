@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\Invoice;
+use App\Models\Payment;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
 class CustomerService extends BaseService
 {
-    public function __construct(private readonly LedgerService $ledger) {}
+    public function __construct(
+        private readonly LedgerService $ledger,
+        private readonly SaleService $sales,
+    ) {}
 
     /** @param array<string,mixed> $filters */
     public function list(int $perPage = 15, array $filters = []): LengthAwarePaginator
@@ -57,8 +62,51 @@ class CustomerService extends BaseService
     }
 
     /** Record a payment received from the customer (reduces receivable). */
-    public function recordPayment(Customer $customer, float $amount, ?string $note = null): void
+    /**
+     * Udhaar collected from a customer. Settles their unpaid invoices oldest-first (each invoice's
+     * balance, status, payment record and ledger move together); anything left over — e.g. an
+     * opening balance with no invoice — is credited to their account.
+     *
+     * @return array{applied: float, on_account: float, invoices: list<string>}
+     */
+    public function recordPayment(Customer $customer, float $amount, ?string $note = null, string $method = 'cash'): array
     {
-        $this->ledger->post($customer, 0, $amount, null, $note ?? 'Payment received');
+        return $this->transaction(function () use ($customer, $amount, $note, $method): array {
+            $remaining = round($amount, 2);
+            $settled = [];
+
+            $open = Invoice::where('customer_id', $customer->id)
+                ->where('balance', '>', 0)
+                ->whereNotIn('status', ['cancelled', 'returned'])
+                ->orderBy('invoice_date')->orderBy('id')
+                ->lockForUpdate()->get();
+
+            foreach ($open as $invoice) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $pay = min($remaining, (float) $invoice->balance);
+                $this->sales->recordPayment($invoice, $pay, $method);
+                $remaining = round($remaining - $pay, 2);
+                $settled[] = $invoice->invoice_number;
+            }
+
+            if ($remaining > 0) {
+                Payment::create([
+                    'reference' => 'RCV-'.now()->format('ymd').'-'.strtoupper(Str::random(5)),
+                    'payable_type' => $customer->getMorphClass(),
+                    'payable_id' => $customer->getKey(),
+                    'amount' => $remaining,
+                    'method' => $method,
+                    'direction' => 'in',
+                    'paid_at' => now()->toDateString(),
+                    'note' => $note,
+                    'created_by' => auth()->id(),
+                ]);
+                $this->ledger->post($customer->fresh(), 0, $remaining, null, $note ?? 'Payment received (on account)');
+            }
+
+            return ['applied' => round($amount - $remaining, 2), 'on_account' => $remaining, 'invoices' => $settled];
+        });
     }
 }

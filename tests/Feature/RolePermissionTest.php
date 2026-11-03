@@ -25,7 +25,7 @@ class RolePermissionTest extends TestCase
 
     public function test_all_roles_and_permissions_are_seeded(): void
     {
-        $this->assertCount(7, Role::all());
+        $this->assertCount(count(RoleName::cases()), Role::all());
         $this->assertSame(count(Permissions::all()), Permission::count());
     }
 

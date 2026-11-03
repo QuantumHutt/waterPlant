@@ -131,7 +131,7 @@ function destroy() {
                             <td class="py-3 pr-4 text-muted-foreground font-mono text-xs">{{ p.sku }}</td>
                             <td class="py-3 pr-4">{{ p.category?.name }}</td>
                             <td class="py-3 pr-4 capitalize">{{ p.type }}</td>
-                            <td class="py-3 pr-4 text-right">{{ format(p.cost_price) }}</td>
+                            <td class="py-3 pr-4 text-right"><span v-if="p.cost_price === null" class="text-xs font-medium text-warning">Pending</span><template v-else>{{ format(p.cost_price) }}</template></td>
                             <td class="py-3 pr-4 text-right font-medium">{{ format(p.sale_price) }}</td>
                             <td class="py-3 pr-4 text-center">{{ p.variants?.length || '—' }}</td>
                             <td class="py-3 pr-0">
@@ -201,9 +201,9 @@ function destroy() {
                         </div>
                         <div><InputLabel value="Bottles per Pack" /><TextInput v-model.number="form.pack_size" type="number" min="1" class="mt-1 block w-full" /><p class="mt-1 text-xs text-muted-foreground">Selling 1 pack deducts this many bottles from the base stock.</p></div>
                     </template>
-                    <div><InputLabel value="Cost Price" /><TextInput v-model.number="form.cost_price" type="number" step="0.0001" class="mt-1 block w-full" required /></div>
-                    <div><InputLabel value="Sale Price" /><TextInput v-model.number="form.sale_price" type="number" step="0.01" class="mt-1 block w-full" required /></div>
-                    <div><InputLabel value="Wholesale Price" /><TextInput v-model.number="form.wholesale_price" type="number" step="0.01" class="mt-1 block w-full" /></div>
+                    <div><InputLabel value="Cost Price" /><TextInput v-model.number="form.cost_price" type="number" step="0.0001" placeholder="Blank = not configured" class="mt-1 block w-full" /><p class="mt-1 text-xs text-muted-foreground">Leave blank if unknown — profit shows as pending, never as 100%.</p></div>
+                    <div><InputLabel value="Sale Price (Own shop / Walk-in)" /><TextInput v-model.number="form.sale_price" type="number" step="0.01" class="mt-1 block w-full" required /></div>
+                    <div><InputLabel value="Market Price (Shop customers)" /><TextInput v-model.number="form.wholesale_price" type="number" step="0.01" class="mt-1 block w-full" /></div>
                 </div>
 
                 <!-- Variants -->

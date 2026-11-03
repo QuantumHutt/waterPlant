@@ -27,7 +27,7 @@ class Product extends Model implements Auditable
     use SoftDeletes;
 
     protected $fillable = [
-        'category_id', 'sku', 'barcode', 'name', 'description', 'type', 'is_service', 'unit', 'water_litres', 'pack_size', 'unit_type', 'pack_of_product_id',
+        'category_id', 'sku', 'barcode', 'name', 'description', 'type', 'is_service', 'is_manual_price', 'unit', 'water_litres', 'pack_size', 'unit_type', 'pack_of_product_id',
         'cost_price', 'sale_price', 'wholesale_price', 'reorder_level', 'opening_stock',
         'track_inventory', 'is_active', 'created_by', 'updated_by',
     ];
@@ -36,6 +36,7 @@ class Product extends Model implements Auditable
         'type' => ProductType::class,
         'unit' => ProductUnit::class,
         'is_service' => 'boolean',
+        'is_manual_price' => 'boolean',
         'water_litres' => 'decimal:3',
         'pack_size' => 'integer',
         'cost_price' => 'decimal:4',
@@ -66,6 +67,16 @@ class Product extends Model implements Auditable
     public function isPack(): bool
     {
         return $this->pack_of_product_id !== null;
+    }
+
+    /** List price for an invoice type: shop customers (wholesale) → market price, else shop price. */
+    public function priceFor(string $invoiceType): float
+    {
+        if ($invoiceType === 'wholesale' && $this->wholesale_price !== null) {
+            return (float) $this->wholesale_price;
+        }
+
+        return (float) $this->sale_price;
     }
 
     public function stockItems(): HasMany
