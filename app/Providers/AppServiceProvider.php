@@ -23,7 +23,9 @@ class AppServiceProvider extends ServiceProvider
     {
         Vite::prefetch(concurrency: 3);
 
-        if (! $this->app->environment('local')) {
+        // Behind a TLS-terminating proxy the request may arrive as http;
+        // generate https URLs whenever the app is configured with an https APP_URL.
+        if (str_starts_with((string) config('app.url'), 'https://')) {
             URL::forceScheme('https');
         }
     }
