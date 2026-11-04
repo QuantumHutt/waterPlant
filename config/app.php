@@ -56,6 +56,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Deploy Token
+    |--------------------------------------------------------------------------
+    |
+    | When set, GET /api/_deploy/migrate?token=... runs pending migrations
+    | from inside the running app (for hosts without shell access).
+    |
+    */
+
+    'deploy_token' => env('DEPLOY_TOKEN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

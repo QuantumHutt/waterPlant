@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\UserController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 
 // All API route names are prefixed with "api." so they never collide with the
@@ -34,4 +36,25 @@ Route::prefix('v1')->name('api.')->group(function () {
             Route::post('adjust', [InventoryController::class, 'adjust'])->name('adjust');
         });
     });
+});
+
+// One-off deploy helper for hosts without shell access. Lives under the API
+// group on purpose: it must not go through the session middleware, because the
+// sessions table may not exist yet. Disabled unless DEPLOY_TOKEN is set.
+Route::get('_deploy/migrate', function (Request $request) {
+    $token = (string) config('app.deploy_token');
+
+    abort_unless($token !== '' && hash_equals($token, (string) $request->query('token')), 404);
+
+    set_time_limit(300);
+
+    Artisan::call('migrate', ['--force' => true]);
+    $output = Artisan::output();
+
+    if ($request->boolean('seed')) {
+        Artisan::call('db:seed', ['--force' => true]);
+        $output .= Artisan::output();
+    }
+
+    return response($output, 200)->header('Content-Type', 'text/plain');
 });
